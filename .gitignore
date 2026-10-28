@@ -1,0 +1,82 @@
+# =============================================================================
+# InAds — Seguridad y Archivos Ignorados (Git)
+# =============================================================================
+
+# 1. Variables de Entorno y Secretos (CRÍTICO: Nunca subir a Git)
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+Backend/.env
+Frontend/.env.local
+!*.env.example
+!.env.example
+!Backend/.env.example
+!Frontend/.env.example
+
+# 2. Certificados, Llaves Privadas y Credenciales Cloud (Google OAuth / Supabase)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+client_secret*.json
+**/client_secret*.json
+service-account*.json
+gcp-credentials*.json
+google-credentials*.json
+secrets/
+
+# 3. Backend (Golang)
+Backend/bin/
+Backend/tmp/
+Backend/vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# 4. Frontend (Next.js / Node.js)
+Frontend/node_modules/
+node_modules/
+Frontend/.next/
+.next/
+Frontend/out/
+out/
+Frontend/build/
+build/
+dist/
+.vercel/
+next-env.d.ts
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 5. Base de Datos & Supabase Local
+.branches
+.temp
+supabase/.temp/
+supabase/.branches/
+*.db
+*.sqlite
+*.sqlite3
+
+# 6. Archivos de Sistema Operativo e IDEs
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.log

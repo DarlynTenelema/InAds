@@ -1,0 +1,61 @@
+package security
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+)
+
+type JWTClaims struct {
+	Sub   string `json:"sub"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	Exp   int64  `json:"exp"`
+}
+
+// VerifySupabaseJWT valida criptográficamente un token JWT emitido por Supabase Auth (HS256).
+func VerifySupabaseJWT(tokenString, jwtSecret string) (*JWTClaims, error) {
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, errors.New("formato de token JWT inválido")
+	}
+
+	unsignedToken := parts[0] + "." + parts[1]
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return nil, errors.New("firma JWT mal codificada")
+	}
+
+	mac := hmac.New(sha256.New, []byte(jwtSecret))
+	mac.Write([]byte(unsignedToken))
+	expectedSig := mac.Sum(nil)
+
+	if !hmac.Equal(signature, expectedSig) {
+		return nil, errors.New("firma de token JWT inválida")
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, errors.New("payload JWT mal codificado")
+	}
+
+	var claims JWTClaims
+	if err := json.Unmarshal(payloadBytes, &claims); err != nil {
+		return nil, errors.New("no se pudieron leer los claims del JWT")
+	}
+
+	if claims.Exp > 0 && time.Now().Unix() > claims.Exp {
+		return nil, errors.New("la sesión ha expirado")
+	}
+
+	if claims.Sub == "" {
+		return nil, errors.New("token sin identificador de usuario (sub)")
+	}
+
+	return &claims, nil
+}
+
