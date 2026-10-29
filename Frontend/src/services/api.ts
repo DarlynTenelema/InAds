@@ -7,7 +7,7 @@ import { PayoutDetails, PayoutMethodType, SocialLinks, UserRole } from "@/types"
 
 const PRODUCTION_FALLBACK_API_URL = "https://inads-production.up.railway.app/api/v1";
 
-function resolveApiBaseUrl(): string {
+export function resolveApiBaseUrl(): string {
   const envUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
   if (typeof window !== "undefined") {
     const isLocalhost =

@@ -10,8 +10,10 @@ import {
   Clock,
   Copy,
   DollarSign,
+  ExternalLink,
   Gamepad2,
   Loader2,
+  Mail,
   Send,
   Wallet,
 } from "lucide-react";
@@ -69,6 +71,7 @@ export default function WalletPage() {
   const [depositAmount, setDepositAmount] = useState("30");
   const [depositMethod, setDepositMethod] = useState<PayoutMethodType>("paypal");
   const [depositReference, setDepositReference] = useState("");
+  const [depositReceiptUrl, setDepositReceiptUrl] = useState("");
 
   // Sincronizar método y destino predeterminado del perfil del usuario
   useEffect(() => {
@@ -172,11 +175,13 @@ export default function WalletPage() {
         amount: numericAmount,
         payment_method: depositMethod,
         reference_code: depositReference.trim(),
+        receipt_url: depositReceiptUrl.trim() || undefined,
       });
       if (res.deposit) {
         await loadWallet();
       }
       setDepositReference("");
+      setDepositReceiptUrl("");
       setIsDepositModalOpen(false);
       setWalletSuccess(
         "Comprobante de recarga enviado. El administrador validará la referencia y acreditará el saldo en tu campaña."
@@ -327,7 +332,18 @@ export default function WalletPage() {
                           {PAYOUT_METHOD_LABELS[dep.payment_method] || dep.payment_method}
                         </td>
                         <td className="py-4 px-4 font-mono text-xs text-ink-primary">
-                          {dep.reference_code}
+                          <div>{dep.reference_code}</div>
+                          {dep.receipt_url && (
+                            <a
+                              href={dep.receipt_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-sans font-bold text-brand-600 hover:underline mt-0.5"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Ver comprobante
+                            </a>
+                          )}
                         </td>
                         <td className="py-4 px-4">
                           <Badge status={dep.status} />
@@ -394,6 +410,14 @@ export default function WalletPage() {
               required
               value={depositReference}
               onChange={(e) => setDepositReference(e.target.value)}
+            />
+            <Input
+              label="Enlace al Comprobante / Captura de Pago (Opcional)"
+              type="url"
+              placeholder="https://drive.google.com/... o enlace a tu captura"
+              value={depositReceiptUrl}
+              onChange={(e) => setDepositReceiptUrl(e.target.value)}
+              helperText="Puedes pegar un enlace al comprobante o enviarlo a 0805409802d@gmail.com"
             />
             <div className="flex justify-end gap-2 pt-3 border-t border-surface-border">
               <Button
@@ -476,6 +500,18 @@ export default function WalletPage() {
                   : `Necesitas ${formatUSD(
                       BUSINESS_RULES.MIN_PAYOUT_USD - availableBalance
                     )} adicionales para desbloquear el botón de retiro.`}
+              </p>
+              <p className="text-xs text-ink-secondary flex items-center gap-1.5 pt-1">
+                <Mail className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                <span>
+                  ¿Dudas con tu pago o método de cobro? Comunícate directamente con administración en{" "}
+                  <a
+                    href={`mailto:${BUSINESS_RULES.SUPPORT_EMAIL}`}
+                    className="font-bold text-brand-600 hover:underline"
+                  >
+                    {BUSINESS_RULES.SUPPORT_EMAIL}
+                  </a>
+                </span>
               </p>
             </div>
 

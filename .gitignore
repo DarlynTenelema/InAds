@@ -80,3 +80,7 @@ Desktop.ini
 *.swo
 *~
 *.log
+
+# 7. Sistema Local de Generación de Videos con IA (No subir a Git)
+inAnimation/
+/inAnimation/

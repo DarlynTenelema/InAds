@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   DollarSign,
+  ExternalLink,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -374,9 +375,20 @@ export default function AdminManualOperationsPage() {
                         <span className="text-xs font-semibold text-ink-primary block">
                           {PAYOUT_METHOD_LABELS[dep.payment_method] || dep.payment_method}
                         </span>
-                        <span className="font-mono text-xs text-brand-600">
+                        <span className="font-mono text-xs text-brand-600 block">
                           {dep.reference_code}
                         </span>
+                        {dep.receipt_url && (
+                          <a
+                            href={dep.receipt_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:underline mt-0.5"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            Ver comprobante adjunto
+                          </a>
+                        )}
                       </td>
                       <td className="py-4 px-4 font-black text-brand-600">
                         {formatUSD(dep.amount)}

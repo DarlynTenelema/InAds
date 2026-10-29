@@ -56,7 +56,11 @@ func (s *Server) ClaimReferral(w http.ResponseWriter, r *http.Request) {
 
 	// Hashear el device_hash con nuestro salt del servidor para privacidad y seguridad uniforme
 	saltedDeviceHash := security.HashDeviceID(req.DeviceHash, s.Cfg.DeviceHashSalt)
-	ipSubnet := security.ExtractIPSubnet(r.RemoteAddr, r.Header.Get("X-Forwarded-For"))
+	forwardedHeader := r.Header.Get("X-Forwarded-For")
+	if forwardedHeader == "" {
+		forwardedHeader = r.Header.Get("X-Real-IP")
+	}
+	ipSubnet := security.ExtractIPSubnet(r.RemoteAddr, forwardedHeader)
 
 	rpcPayload := map[string]any{
 		"p_api_key_hash":  apiKeyHash,

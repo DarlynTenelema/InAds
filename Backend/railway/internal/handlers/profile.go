@@ -47,6 +47,7 @@ func (s *Server) GetMyProfile(w http.ResponseWriter, r *http.Request) {
 // Permite elegir entre "influencer" o "developer" durante el onboarding (/auth).
 func (s *Server) SelectInitialRole(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.CtxUserIDKey).(string)
+	email, _ := r.Context().Value(middleware.CtxUserEmailKey).(string)
 
 	var req struct {
 		Role string `json:"role"`
@@ -76,14 +77,17 @@ func (s *Server) SelectInitialRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updated []map[string]any
-	if err := s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(userID), map[string]any{"role": role}, &updated); err != nil {
-		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", err.Error())
+	if err := s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(userID), map[string]any{"role": role}, &updated); err != nil || len(updated) == 0 {
+		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", "No se pudo actualizar el rol del perfil")
 		return
 	}
 
+	profile := updated[0]
+	profile["is_admin"] = s.Cfg.AdminEmails[email] || profile["role"] == "admin"
+
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"profile": updated[0],
+		"profile": profile,
 	})
 }
 
@@ -91,6 +95,7 @@ func (s *Server) SelectInitialRole(w http.ResponseWriter, r *http.Request) {
 // Actualiza nombre, redes sociales vinculadas, método de cobro y preferencias (/settings y /wallet).
 func (s *Server) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.CtxUserIDKey).(string)
+	email, _ := r.Context().Value(middleware.CtxUserEmailKey).(string)
 
 	var req struct {
 		FullName           *string        `json:"full_name"`
@@ -136,14 +141,17 @@ func (s *Server) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updated []map[string]any
-	if err := s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(userID), updates, &updated); err != nil {
-		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", err.Error())
+	if err := s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(userID), updates, &updated); err != nil || len(updated) == 0 {
+		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", "No se pudieron actualizar las configuraciones")
 		return
 	}
 
+	profile := updated[0]
+	profile["is_admin"] = s.Cfg.AdminEmails[email] || profile["role"] == "admin"
+
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"profile": updated[0],
+		"profile": profile,
 	})
 }
 

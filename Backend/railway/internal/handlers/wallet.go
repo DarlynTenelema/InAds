@@ -112,6 +112,7 @@ func (s *Server) ReportDeposit(w http.ResponseWriter, r *http.Request) {
 	req.AppID = strings.TrimSpace(req.AppID)
 	req.PaymentMethod = strings.TrimSpace(req.PaymentMethod)
 	req.ReferenceCode = strings.TrimSpace(req.ReferenceCode)
+	req.ReceiptURL = strings.TrimSpace(req.ReceiptURL)
 
 	if req.AppID == "" || req.PaymentMethod == "" || req.ReferenceCode == "" {
 		middleware.WriteError(w, http.StatusBadRequest, "MISSING_FIELDS", "Debes especificar la App, el método de pago y el código de comprobante/referencia")

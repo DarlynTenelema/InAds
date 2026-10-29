@@ -41,12 +41,9 @@ func Load() *Config {
 		}
 	}
 
-	adminEmails := map[string]bool{
-		"0805409802d@gmail.com":     true,
-		"darlyndavid2026@gmail.com": true,
-		"darlyndavid100@gmail.com":  true,
-	}
-	for _, email := range strings.Split(getEnv("ADMIN_EMAILS", ""), ",") {
+	adminEmails := make(map[string]bool)
+	defaultAdmins := "0805409802d@gmail.com,darlyndavid2026@gmail.com,darlyndavid100@gmail.com"
+	for _, email := range strings.Split(getEnv("ADMIN_EMAILS", defaultAdmins), ",") {
 		clean := strings.ToLower(strings.TrimSpace(email))
 		if clean != "" {
 			adminEmails[clean] = true

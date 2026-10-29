@@ -80,6 +80,7 @@ DECLARE
     v_campaign public.influencer_campaigns%ROWTYPE;
     v_influencer public.profiles%ROWTYPE;
     v_subnet_claims_last_hour INTEGER := 0;
+    v_max_subnet_limit INTEGER := 50;
     v_initial_status referral_status := 'pending';
     v_fraud_reason TEXT := NULL;
     v_new_referral_id UUID;
@@ -127,7 +128,7 @@ BEGIN
         RETURN jsonb_build_object('status', 'error', 'code', 'DEVICE_ALREADY_CLAIMED', 'message', 'Este dispositivo ya registró un código en este juego');
     END IF;
 
-    -- 6. Control Antifraude: ¿Más de 50 registros desde la misma subred IP en 1 hora?
+    -- 6. Control Antifraude: ¿Más de N registros desde la misma subred IP en 1 hora?
     IF p_ip_subnet IS NOT NULL AND p_ip_subnet != '' THEN
         SELECT COUNT(*) INTO v_subnet_claims_last_hour
         FROM public.referrals
@@ -135,9 +136,9 @@ BEGIN
           AND ip_subnet = p_ip_subnet
           AND claimed_at >= (NOW() - INTERVAL '1 hour');
 
-        IF v_subnet_claims_last_hour >= 50 THEN
+        IF v_subnet_claims_last_hour >= v_max_subnet_limit THEN
             v_initial_status := 'flagged_fraud';
-            v_fraud_reason := 'Más de 50 registros desde la misma subred IP en menos de 1 hora';
+            v_fraud_reason := 'Más de ' || v_max_subnet_limit || ' registros desde la misma subred IP en menos de 1 hora';
 
             INSERT INTO public.fraud_alerts (campaign_id, influencer_id, app_id, alert_type, severity, details)
             VALUES (
@@ -236,6 +237,11 @@ BEGIN
 
     IF v_referral.status != 'pending' THEN
         RETURN jsonb_build_object('status', 'error', 'code', 'REFERRAL_NOT_ELIGIBLE', 'message', 'El registro se encuentra en revisión o fue rechazado por fraude');
+    END IF;
+
+    -- 2.1 Validar ventana máxima de retención (15 días desde el canje inicial)
+    IF v_referral.claimed_at < (NOW() - INTERVAL '15 days') AND p_event != 'retention_confirmed' THEN
+        RETURN jsonb_build_object('status', 'error', 'code', 'REFERRAL_WINDOW_EXPIRED', 'message', 'El periodo de 15 días para completar las sesiones mínimas de validación ha expirado');
     END IF;
 
     -- 3. Contabilizar sesión en día distinto

@@ -79,7 +79,11 @@ func (g *Guard) SecurityAndCORS(next http.Handler) http.Handler {
 		}
 
 		// Rate limit por IP
-		clientIP := security.ExtractIPSubnet(r.RemoteAddr, r.Header.Get("X-Forwarded-For"))
+		forwardedHeader := r.Header.Get("X-Forwarded-For")
+		if forwardedHeader == "" {
+			forwardedHeader = r.Header.Get("X-Real-IP")
+		}
+		clientIP := security.ExtractIPSubnet(r.RemoteAddr, forwardedHeader)
 		if !g.allowRequest(clientIP) {
 			WriteError(w, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", "Demasiadas solicitudes. Por favor intenta de nuevo en un minuto.")
 			return

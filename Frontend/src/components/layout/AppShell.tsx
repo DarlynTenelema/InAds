@@ -9,11 +9,12 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Mail,
   Settings,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
-import { APP_ROUTES } from "@/constants/config";
+import { APP_ROUTES, BUSINESS_RULES } from "@/constants/config";
 import { useAuth } from "@/hooks/useAuth";
 import { THEME_TOKENS } from "@/theme/tokens";
 import { UserRole } from "@/types";
@@ -235,6 +236,15 @@ export function AppShell({
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+
+          <a
+            href={`mailto:${BUSINESS_RULES.SUPPORT_EMAIL}`}
+            className="flex items-center gap-1.5 pt-2 border-t border-surface-border text-[11px] font-semibold text-ink-secondary hover:text-brand-600 transition-colors truncate"
+            title={`Contactar soporte: ${BUSINESS_RULES.SUPPORT_EMAIL}`}
+          >
+            <Mail className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+            <span className="truncate">Soporte: {BUSINESS_RULES.SUPPORT_EMAIL}</span>
+          </a>
         </div>
       </aside>
 

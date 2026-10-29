@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button, Card, Input, Select } from "@/components/ui";
+import { BUSINESS_RULES } from "@/constants/config";
 import { useAuth } from "@/hooks/useAuth";
 import { inadsApi } from "@/services/api";
 import { PayoutMethodType } from "@/types";
@@ -254,12 +255,26 @@ export default function SettingsPage() {
             />
           </div>
 
-          <div className="mt-4 pt-4 border-t border-surface-border flex items-center gap-2 text-xs text-ink-secondary">
-            <Shield className="w-4 h-4 text-brand-600 shrink-0" />
-            <span>
-              Tu sesión está protegida mediante tokens firmados con{" "}
-              <strong className="text-ink-primary">Google OAuth & Supabase RLS</strong>.
-            </span>
+          <div className="mt-4 pt-4 border-t border-surface-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-ink-secondary">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-brand-600 shrink-0" />
+              <span>
+                Tu sesión está protegida mediante tokens firmados con{" "}
+                <strong className="text-ink-primary">Google OAuth & Supabase RLS</strong>.
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+              <span>
+                Soporte directo:{" "}
+                <a
+                  href={`mailto:${BUSINESS_RULES.SUPPORT_EMAIL}`}
+                  className="font-bold text-brand-600 hover:underline"
+                >
+                  {BUSINESS_RULES.SUPPORT_EMAIL}
+                </a>
+              </span>
+            </div>
           </div>
         </Card>
 

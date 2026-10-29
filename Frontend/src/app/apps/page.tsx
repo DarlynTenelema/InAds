@@ -30,7 +30,7 @@ import {
 import { BUSINESS_RULES } from "@/constants/config";
 import { useAuth } from "@/hooks/useAuth";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { inadsApi } from "@/services/api";
+import { inadsApi, resolveApiBaseUrl } from "@/services/api";
 import { AppItem, InfluencerCampaign } from "@/types";
 import { cn, formatNumber, formatUSD } from "@/utils/formatters";
 
@@ -554,15 +554,26 @@ export default function AppsMarketplacePage() {
 
             {/* Enlace de la tienda para colocar en la bio o comentario fijado */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-              <a
-                href={selectedAppForModal.store_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-brand-600 hover:underline inline-flex items-center gap-1.5"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Abrir página de descarga del juego
-              </a>
+              <div className="space-y-1">
+                <a
+                  href={selectedAppForModal.store_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-brand-600 hover:underline inline-flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir página de descarga del juego
+                </a>
+                <p className="text-[11px] text-ink-secondary">
+                  ¿Consultas con esta campaña? Escríbenos a{" "}
+                  <a
+                    href={`mailto:${BUSINESS_RULES.SUPPORT_EMAIL}`}
+                    className="font-bold text-brand-600 hover:underline"
+                  >
+                    {BUSINESS_RULES.SUPPORT_EMAIL}
+                  </a>
+                </p>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -727,7 +738,7 @@ export default function AppsMarketplacePage() {
               1. Cuando el jugador pega el código dentro del juego:
             </span>
             <pre className="p-3 rounded-lg bg-ink-primary text-surface-pure font-mono overflow-x-auto leading-relaxed">
-{`POST https://inads-production.up.railway.app/api/v1/referrals/claim
+{`POST ${resolveApiBaseUrl()}/referrals/claim
 Authorization: Bearer inads_live_TU_API_KEY
 Content-Type: application/json
 
@@ -744,7 +755,7 @@ Content-Type: application/json
               2. Cuando el jugador cumple actividad/retención (libera los $0.10 al influencer):
             </span>
             <pre className="p-3 rounded-lg bg-ink-primary text-surface-pure font-mono overflow-x-auto leading-relaxed">
-{`POST https://inads-production.up.railway.app/api/v1/referrals/verify
+{`POST ${resolveApiBaseUrl()}/referrals/verify
 Authorization: Bearer inads_live_TU_API_KEY
 Content-Type: application/json
 

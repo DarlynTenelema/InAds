@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { ArrowLeft, Shield } from "lucide-react";
-import { APP_ROUTES } from "@/constants/config";
+import { APP_ROUTES, BUSINESS_RULES } from "@/constants/config";
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = "28 de octubre de 2026";
@@ -155,10 +155,10 @@ export default function PrivacyPolicyPage() {
               <p className="mt-2 font-medium text-ink-primary">
                 Correo electrónico:{" "}
                 <a
-                  href="mailto:darlyndavid2026@gmail.com"
+                  href={`mailto:${BUSINESS_RULES.SUPPORT_EMAIL}`}
                   className="text-brand-600 underline"
                 >
-                  darlyndavid2026@gmail.com
+                  {BUSINESS_RULES.SUPPORT_EMAIL}
                 </a>
               </p>
             </section>

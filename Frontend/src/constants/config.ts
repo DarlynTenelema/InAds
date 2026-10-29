@@ -18,6 +18,7 @@ export const BUSINESS_RULES = {
   DEFAULT_MIN_SESSIONS: 3,
   MIN_FOLLOWERS: 1000,
   MAX_FOLLOWERS: 10000,
+  SUPPORT_EMAIL: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "0805409802d@gmail.com",
 } as const;
 
 export const APP_ROUTES = {
@@ -33,19 +34,22 @@ export const APP_ROUTES = {
 
 export const INADS_RECEIVING_ACCOUNTS = {
   paypal: {
-    label: "PayPal Corporativo InAds",
-    destination: "pagos@inads.io",
+    label: "PayPal Oficial InAds",
+    destination:
+      process.env.NEXT_PUBLIC_PAYPAL_ACCOUNT || "0805409802d@gmail.com",
     note: "Incluye el nombre de tu App en la nota del envío y guarda el ID de transacción.",
   },
   bank_transfer: {
-    label: "Transferencia Bancaria (USD / Local)",
-    destination: "Banco InAds • Cuenta / CLABE: 0123 4567 8901 2345 67",
-    note: "Envía el comprobante con el número de referencia bancaria.",
+    label: "Transferencia Bancaria (Coordinación Directa)",
+    destination:
+      process.env.NEXT_PUBLIC_BANK_ACCOUNT || "0805409802d@gmail.com",
+    note: "Solicita los datos bancarios locales o envía tu comprobante con el número de referencia.",
   },
   usdt_crypto: {
     label: "USDT (Red TRC20 / Polygon)",
-    destination: "0x71C...9A23F84E (Polygon / ERC20)",
-    note: "Pega el Hash de la transacción (TxID) una vez confirmada en la blockchain.",
+    destination:
+      process.env.NEXT_PUBLIC_USDT_WALLET || "0805409802d@gmail.com",
+    note: "Coordina la red de envío o pega el Hash de la transacción (TxID) una vez confirmada.",
   },
 } as const;
 

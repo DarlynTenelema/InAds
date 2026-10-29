@@ -222,11 +222,30 @@ func (s *Server) AdminResolveFraudAlert(w http.ResponseWriter, r *http.Request) 
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	if req.SuspendInfluencer && req.InfluencerID != "" {
+	// Consultar la alerta real en la base de datos para obtener el influencer_id verificado
+	var existingAlerts []struct {
+		ID           string  `json:"id"`
+		InfluencerID *string `json:"influencer_id"`
+	}
+	if err := s.DB.Query(r.Context(), "fraud_alerts?id=eq."+url.QueryEscape(alertID)+"&select=id,influencer_id", &existingAlerts); err != nil || len(existingAlerts) == 0 {
+		middleware.WriteError(w, http.StatusNotFound, "ALERT_NOT_FOUND", "Alerta antifraude no encontrada")
+		return
+	}
+
+	targetInfluencerID := strings.TrimSpace(req.InfluencerID)
+	if existingAlerts[0].InfluencerID != nil && *existingAlerts[0].InfluencerID != "" {
+		targetInfluencerID = *existingAlerts[0].InfluencerID
+	}
+
+	if req.SuspendInfluencer && targetInfluencerID != "" {
+		reason := strings.TrimSpace(req.Reason)
+		if reason == "" {
+			reason = "Suspendido por alerta antifraude de subred IP (>50 registros/hora)"
+		}
 		var ignored []map[string]any
-		_ = s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(req.InfluencerID), map[string]any{
+		_ = s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(targetInfluencerID), map[string]any{
 			"is_suspended":      true,
-			"suspension_reason": req.Reason,
+			"suspension_reason": reason,
 		}, &ignored)
 	}
 

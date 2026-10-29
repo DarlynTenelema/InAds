@@ -69,8 +69,19 @@ func GenerateReferralCode(influencerName, appName string) string {
 }
 
 // ExtractIPSubnet obtiene la subred /24 (IPv4) o /64 (IPv6) para alimentar el detector antifraude (>50 registros/hora).
+// Toma el último salto confiable de X-Forwarded-For (añadido por el proxy inverso de Railway) para evitar spoofing de cabeceras.
 func ExtractIPSubnet(remoteAddr, xForwardedFor string) string {
-	ipStr := strings.TrimSpace(strings.Split(xForwardedFor, ",")[0])
+	var ipStr string
+	if strings.TrimSpace(xForwardedFor) != "" {
+		parts := strings.Split(xForwardedFor, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			candidate := strings.TrimSpace(parts[i])
+			if candidate != "" && net.ParseIP(candidate) != nil {
+				ipStr = candidate
+				break
+			}
+		}
+	}
 	if ipStr == "" {
 		host, _, err := net.SplitHostPort(remoteAddr)
 		if err == nil {
