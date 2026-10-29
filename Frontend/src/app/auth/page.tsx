@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -23,14 +24,14 @@ const PENDING_ROLE_STORAGE_KEY = "inads_pending_oauth_role";
 
 export default function AuthLoginPage() {
   const router = useRouter();
-  const { profile, isLoading, isDemoMode, loginWithGoogle, selectRole } = useAuth();
+  const { profile, isLoading, loginWithGoogle, selectRole } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>("influencer");
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Cuando el usuario regresa del callback de Google OAuth con sesión activa en Supabase:
   // Si aún no tiene rol en la base de datos, le asignamos el rol que eligió antes de ir a Google.
   useEffect(() => {
-    if (isLoading || !profile || isDemoMode) return;
+    if (isLoading || !profile) return;
 
     const finalizeOAuthOnboarding = async () => {
       try {
@@ -51,7 +52,7 @@ export default function AuthLoginPage() {
     };
 
     finalizeOAuthOnboarding();
-  }, [isLoading, profile, isDemoMode, selectRole, selectedRole, router]);
+  }, [isLoading, profile, selectRole, selectedRole, router]);
 
   const handleContinueWithGoogle = async (role: UserRole) => {
     setAuthError(null);
@@ -60,9 +61,6 @@ export default function AuthLoginPage() {
         window.localStorage.setItem(PENDING_ROLE_STORAGE_KEY, role);
       }
       await loginWithGoogle(role);
-      if (isDemoMode) {
-        router.push(APP_ROUTES.DASHBOARD);
-      }
     } catch (err: any) {
       setAuthError(err?.message || "Error al iniciar sesión con Google.");
     }
@@ -80,9 +78,14 @@ export default function AuthLoginPage() {
           animate={{ opacity: 1, x: 0 }}
           className="flex items-center gap-2.5"
         >
-          <div className="w-10 h-10 rounded-2xl bg-brand-600 text-surface-pure flex items-center justify-center font-black text-xl shadow-glow">
-            In
-          </div>
+          <Image
+            src="/logo.png"
+            alt="InAds Logo"
+            width={44}
+            height={44}
+            className="w-11 h-11 object-contain rounded-xl shadow-xs"
+            priority
+          />
           <div>
             <span className="text-2xl font-black tracking-tight text-brand-600 leading-none block">
               InAds

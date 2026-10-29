@@ -481,3 +481,52 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.fn_admin_reject_payout(
+    p_admin_id UUID,
+    p_payout_id UUID,
+    p_admin_notes TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_payout public.payout_requests%ROWTYPE;
+    v_profile public.profiles%ROWTYPE;
+    v_new_balance NUMERIC(12, 2);
+BEGIN
+    SELECT * INTO v_payout
+    FROM public.payout_requests
+    WHERE id = p_payout_id
+    FOR UPDATE;
+
+    IF NOT FOUND OR v_payout.status NOT IN ('pending', 'processing') THEN
+        RETURN jsonb_build_object('status', 'error', 'message', 'La solicitud de retiro no existe o ya fue procesada');
+    END IF;
+
+    SELECT * INTO v_profile
+    FROM public.profiles
+    WHERE id = v_payout.influencer_id
+    FOR UPDATE;
+
+    v_new_balance := v_profile.available_balance + v_payout.amount;
+
+    UPDATE public.profiles
+    SET available_balance = v_new_balance
+    WHERE id = v_payout.influencer_id;
+
+    UPDATE public.payout_requests
+    SET status = 'rejected',
+        admin_notes = p_admin_notes,
+        processed_by = p_admin_id,
+        processed_at = NOW()
+    WHERE id = p_payout_id;
+
+    INSERT INTO public.ledger_entries (user_id, entry_type, amount, balance_after, description)
+    VALUES (v_payout.influencer_id, 'payout_rejected_refund', v_payout.amount, v_new_balance, 'Retiro rechazado — saldo reintegrado (' || COALESCE(p_admin_notes, 'Revisión administrativa') || ')');
+
+    RETURN jsonb_build_object('status', 'success', 'payout_id', p_payout_id, 'refunded_balance', v_new_balance);
+END;
+$$;
+
+

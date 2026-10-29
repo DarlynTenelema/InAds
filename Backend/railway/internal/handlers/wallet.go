@@ -23,14 +23,14 @@ func (s *Server) GetWallet(w http.ResponseWriter, r *http.Request) {
 	profile := profiles[0]
 	role, _ := profile["role"].(string)
 
-	var ledger []map[string]any
+	ledger := make([]map[string]any, 0)
 	_ = s.DB.Query(r.Context(), "ledger_entries?user_id=eq."+url.QueryEscape(userID)+"&order=created_at.desc&limit=50", &ledger)
 
 	if role == "developer" {
-		var deposits []map[string]any
+		deposits := make([]map[string]any, 0)
 		_ = s.DB.Query(r.Context(), "wallet_deposits?developer_id=eq."+url.QueryEscape(userID)+"&select=*,apps(name)&order=created_at.desc", &deposits)
 
-		var myApps []map[string]any
+		myApps := make([]map[string]any, 0)
 		_ = s.DB.Query(r.Context(), "apps?developer_id=eq."+url.QueryEscape(userID)+"&select=id,name,campaign_balance,status", &myApps)
 
 		middleware.WriteJSON(w, http.StatusOK, map[string]any{
@@ -43,7 +43,7 @@ func (s *Server) GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payouts []map[string]any
+	payouts := make([]map[string]any, 0)
 	_ = s.DB.Query(r.Context(), "payout_requests?influencer_id=eq."+url.QueryEscape(userID)+"&order=created_at.desc", &payouts)
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{

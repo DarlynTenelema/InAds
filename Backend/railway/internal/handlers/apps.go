@@ -27,7 +27,7 @@ func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "developer" {
-		var myApps []map[string]any
+		myApps := make([]map[string]any, 0)
 		query := "apps?developer_id=eq." + url.QueryEscape(userID) + "&select=id,name,description,category,icon_url,store_url,pitch_guidelines,campaign_balance,total_deposited,cost_per_user,influencer_reward,api_key_prefix,status,min_sessions_required,total_claims,total_verified,created_at&order=created_at.desc"
 		if err := s.DB.Query(r.Context(), query, &myApps); err != nil {
 			middleware.WriteError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
@@ -42,14 +42,14 @@ func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Catálogo público de apps activas para Influencers
-	var activeApps []map[string]any
+	activeApps := make([]map[string]any, 0)
 	query := "apps?status=eq.active&select=id,name,description,category,icon_url,store_url,pitch_guidelines,campaign_balance,influencer_reward,min_sessions_required,total_verified,created_at&order=created_at.desc"
 	if err := s.DB.Query(r.Context(), query, &activeApps); err != nil {
 		middleware.WriteError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
-	var myCampaigns []map[string]any
+	myCampaigns := make([]map[string]any, 0)
 	_ = s.DB.Query(r.Context(), "influencer_campaigns?influencer_id=eq."+url.QueryEscape(userID)+"&select=id,app_id,referral_code,pending_referrals_count,verified_referrals_count,total_earned", &myCampaigns)
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{
@@ -64,6 +64,15 @@ func (s *Server) ListApps(w http.ResponseWriter, r *http.Request) {
 // Permite a un Desarrollador registrar una nueva App/Juego y obtener su API Key única.
 func (s *Server) CreateApp(w http.ResponseWriter, r *http.Request) {
 	userID, _ := r.Context().Value(middleware.CtxUserIDKey).(string)
+
+	var profiles []struct {
+		Role *string `json:"role"`
+	}
+	_ = s.DB.Query(r.Context(), "profiles?id=eq."+url.QueryEscape(userID)+"&select=role", &profiles)
+	if len(profiles) == 0 || profiles[0].Role == nil || (*profiles[0].Role != "developer" && *profiles[0].Role != "admin") {
+		middleware.WriteError(w, http.StatusForbidden, "DEVELOPER_ONLY", "Solo las cuentas de Desarrollador pueden publicar aplicaciones")
+		return
+	}
 
 	var req struct {
 		Name                string `json:"name"`
@@ -236,9 +245,14 @@ func (s *Server) JoinAppCampaign(w http.ResponseWriter, r *http.Request) {
 	var apps []struct {
 		Name            string `json:"name"`
 		PitchGuidelines string `json:"pitch_guidelines"`
+		Status          string `json:"status"`
 	}
-	if err := s.DB.Query(r.Context(), "apps?id=eq."+url.QueryEscape(appID)+"&select=name,pitch_guidelines", &apps); err != nil || len(apps) == 0 {
+	if err := s.DB.Query(r.Context(), "apps?id=eq."+url.QueryEscape(appID)+"&select=name,pitch_guidelines,status", &apps); err != nil || len(apps) == 0 {
 		middleware.WriteError(w, http.StatusNotFound, "APP_NOT_FOUND", "Aplicación no encontrada")
+		return
+	}
+	if apps[0].Status != "active" {
+		middleware.WriteError(w, http.StatusUnprocessableEntity, "APP_NOT_ACTIVE", "Esta aplicación no se encuentra activa en este momento")
 		return
 	}
 
@@ -247,16 +261,21 @@ func (s *Server) JoinAppCampaign(w http.ResponseWriter, r *http.Request) {
 		infName = profiles[0].FullName
 	}
 
-	code := security.GenerateReferralCode(infName, apps[0].Name)
-
 	var created []map[string]any
-	err := s.DB.Insert(r.Context(), "influencer_campaigns", map[string]any{
-		"influencer_id": userID,
-		"app_id":        appID,
-		"referral_code": code,
-	}, &created)
-	if err != nil {
-		middleware.WriteError(w, http.StatusInternalServerError, "CAMPAIGN_CREATE_ERROR", err.Error())
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		code := security.GenerateReferralCode(infName, apps[0].Name)
+		lastErr = s.DB.Insert(r.Context(), "influencer_campaigns", map[string]any{
+			"influencer_id": userID,
+			"app_id":        appID,
+			"referral_code": code,
+		}, &created)
+		if lastErr == nil && len(created) > 0 {
+			break
+		}
+	}
+	if lastErr != nil {
+		middleware.WriteError(w, http.StatusInternalServerError, "CAMPAIGN_CREATE_ERROR", lastErr.Error())
 		return
 	}
 

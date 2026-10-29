@@ -1,15 +1,16 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Gamepad2,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Settings,
   ShieldCheck,
-  Sparkles,
   Wallet,
 } from "lucide-react";
 import { APP_ROUTES } from "@/constants/config";
@@ -33,9 +34,33 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, isDemoMode, switchDemoRole, logout } = useAuth();
+  const { profile, isLoading, logout } = useAuth();
 
-  const currentRole: UserRole = profile?.role || "influencer";
+  useEffect(() => {
+    if (isLoading) return;
+    if (!profile || !profile.role) {
+      router.replace(APP_ROUTES.AUTH);
+      return;
+    }
+    if (
+      pathname.startsWith(APP_ROUTES.ADMIN) &&
+      !profile.is_admin &&
+      profile.role !== "admin"
+    ) {
+      router.replace(APP_ROUTES.DASHBOARD);
+    }
+  }, [isLoading, profile, pathname, router]);
+
+  if (isLoading || !profile || !profile.role) {
+    return (
+      <div className="min-h-[100dvh] bg-surface-subtle flex flex-col items-center justify-center gap-3 text-ink-secondary">
+        <Loader2 className="w-7 h-7 animate-spin text-brand-600" />
+        <p className="text-xs font-bold">Verificando tu sesión segura en InAds...</p>
+      </div>
+    );
+  }
+
+  const currentRole: UserRole = profile.role;
 
   const navItems = [
     {
@@ -62,7 +87,7 @@ export function AppShell({
       shortLabel: "Ajustes",
       icon: Settings,
     },
-    ...(profile?.is_admin || currentRole === "admin"
+    ...(profile.is_admin || currentRole === "admin"
       ? [
           {
             href: APP_ROUTES.ADMIN,
@@ -84,35 +109,27 @@ export function AppShell({
       {/* 1. Barra Superior Compacta Exclusiva para Teléfonos Móviles */}
       <div className="md:hidden sticky top-0 z-30 bg-surface-pure/95 backdrop-blur-md border-b border-surface-border px-4 py-3 flex items-center justify-between gap-2">
         <Link href={APP_ROUTES.DASHBOARD} className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-brand-600 text-surface-pure flex items-center justify-center font-black text-base shadow-xs">
-            In
-          </div>
+          <Image
+            src="/logo.png"
+            alt="InAds"
+            width={32}
+            height={32}
+            className="w-8 h-8 object-contain rounded-lg shadow-2xs"
+            priority
+          />
           <span className="text-lg font-black text-brand-600 tracking-tight">
             InAds
           </span>
         </Link>
 
         <div className="flex items-center gap-2">
-          {isDemoMode && (
-            <div className="flex items-center bg-surface-subtle border border-surface-border rounded-lg p-0.5">
-              {(["influencer", "developer", "admin"] as UserRole[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => switchDemoRole(r)}
-                  className={cn(
-                    "px-2 py-1 rounded-md text-[10px] font-extrabold transition-colors",
-                    currentRole === r
-                      ? "bg-brand-600 text-surface-pure"
-                      : "text-ink-secondary"
-                  )}
-                >
-                  {r === "influencer" ? "Creador" : r === "developer" ? "Dev" : "Admin"}
-                </button>
-              ))}
-            </div>
-          )}
-
+          <span className="px-2.5 py-1 rounded-lg bg-brand-50 border border-brand-200 text-[10px] font-extrabold uppercase text-brand-700">
+            {currentRole === "developer"
+              ? "Desarrollador"
+              : currentRole === "admin"
+              ? "Admin"
+              : "Creador"}
+          </span>
           <button
             type="button"
             onClick={handleLogout}
@@ -131,9 +148,14 @@ export function AppShell({
             href={APP_ROUTES.DASHBOARD}
             className="flex items-center gap-2.5 mb-7"
           >
-            <div className="w-9 h-9 rounded-xl bg-brand-600 text-surface-pure flex items-center justify-center font-black text-lg shadow-sm">
-              In
-            </div>
+            <Image
+              src="/logo.png"
+              alt="InAds"
+              width={38}
+              height={38}
+              className="w-9 h-9 object-contain rounded-xl shadow-xs"
+              priority
+            />
             <div>
               <span className="text-xl font-extrabold tracking-tight text-brand-600">
                 InAds
@@ -173,7 +195,7 @@ export function AppShell({
 
         {/* Pie de Sidebar */}
         <div className="p-4 border-t border-surface-border space-y-3 bg-surface-subtle/60">
-          {currentRole === "influencer" && profile && (
+          {currentRole === "influencer" && (
             <div className="p-3 rounded-xl bg-surface-pure border border-surface-border">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-ink-secondary">Disponible</span>
@@ -195,39 +217,13 @@ export function AppShell({
             </div>
           )}
 
-          {isDemoMode && (
-            <div className="p-2.5 rounded-xl bg-brand-50/70 border border-brand-200">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-brand-700 mb-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Cambiar Vista (Rol):</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                {(["influencer", "developer", "admin"] as UserRole[]).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => switchDemoRole(r)}
-                    className={cn(
-                      "px-2 py-1 rounded-lg text-[11px] font-bold capitalize transition-colors",
-                      currentRole === r
-                        ? "bg-brand-600 text-surface-pure"
-                        : "bg-surface-pure text-ink-secondary hover:text-ink-primary border border-surface-border"
-                    )}
-                  >
-                    {r === "influencer" ? "Creador" : r === "developer" ? "Dev" : "Admin"}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center justify-between gap-2 pt-1">
             <div className="min-w-0">
               <p className="text-xs font-bold text-ink-primary truncate">
-                {profile?.full_name || "Usuario InAds"}
+                {profile.full_name || "Usuario InAds"}
               </p>
               <p className="text-[11px] text-ink-secondary truncate">
-                {profile?.email || "conectado@inads.io"}
+                {profile.email}
               </p>
             </div>
             <button

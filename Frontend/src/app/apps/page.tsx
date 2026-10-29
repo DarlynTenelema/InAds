@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Check,
   Code2,
@@ -8,13 +8,14 @@ import {
   ExternalLink,
   Gamepad2,
   KeyRound,
+  Loader2,
   Megaphone,
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
-  Users,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -26,12 +27,10 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
-import {
-  MOCK_APPS,
-  MOCK_INFLUENCER_CAMPAIGNS,
-} from "@/constants/mockData";
+import { BUSINESS_RULES } from "@/constants/config";
 import { useAuth } from "@/hooks/useAuth";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { inadsApi } from "@/services/api";
 import { AppItem, InfluencerCampaign } from "@/types";
 import { cn, formatNumber, formatUSD } from "@/utils/formatters";
 
@@ -39,10 +38,11 @@ export default function AppsMarketplacePage() {
   const { profile } = useAuth();
   const { copyText, isCopied } = useCopyToClipboard();
 
-  const [appsList, setAppsList] = useState<AppItem[]>(MOCK_APPS);
-  const [campaigns, setCampaigns] = useState<InfluencerCampaign[]>(
-    MOCK_INFLUENCER_CAMPAIGNS
-  );
+  const [appsList, setAppsList] = useState<AppItem[]>([]);
+  const [campaigns, setCampaigns] = useState<InfluencerCampaign[]>([]);
+  const [isLoadingApps, setIsLoadingApps] = useState<boolean>(true);
+  const [pageError, setPageError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -50,10 +50,18 @@ export default function AppsMarketplacePage() {
   const [selectedAppForModal, setSelectedAppForModal] = useState<AppItem | null>(
     null
   );
+  const [joiningAppId, setJoiningAppId] = useState<string | null>(null);
 
   // Modal de "+ Agregar Producto" para el Desarrollador
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingApp, setIsCreatingApp] = useState(false);
   const [newlyGeneratedApiKey, setNewlyGeneratedApiKey] = useState<string | null>(
+    null
+  );
+  const [regeneratingKeyAppId, setRegeneratingKeyAppId] = useState<string | null>(
+    null
+  );
+  const [togglingStatusAppId, setTogglingStatusAppId] = useState<string | null>(
     null
   );
   const [isDocsModalOpen, setIsDocsModalOpen] = useState(false);
@@ -67,6 +75,26 @@ export default function AppsMarketplacePage() {
 
   const role = profile?.role || "influencer";
 
+  const loadApps = useCallback(async () => {
+    setIsLoadingApps(true);
+    setPageError(null);
+    try {
+      const res = await inadsApi.listApps();
+      setAppsList(res.apps || []);
+      if (res.my_campaigns) {
+        setCampaigns(res.my_campaigns);
+      }
+    } catch (err: any) {
+      setPageError(err?.message || "No se pudo cargar el catálogo de aplicaciones.");
+    } finally {
+      setIsLoadingApps(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApps();
+  }, [loadApps]);
+
   const categories = ["all", "Juegos Indie", "RPG / Acción", "Estrategia", "Apps Utilidad"];
 
   const filteredApps = appsList.filter((app) => {
@@ -75,96 +103,100 @@ export default function AppsMarketplacePage() {
       app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       app.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCat =
-      selectedCategory === "all" || app.category === selectedCategory;
+      selectedCategory === "all" ||
+      app.category.toLowerCase() === selectedCategory.toLowerCase() ||
+      (selectedCategory === "Juegos Indie" && app.category === "game");
     return matchesSearch && matchesCat;
   });
 
-  // Obtener o generar el código único del influencer al abrir una tarjeta de App
-  const getOrCreateCampaignForApp = (app: AppItem): InfluencerCampaign => {
-    const found = campaigns.find((c) => c.app_id === app.id);
-    if (found) return found;
+  // Abrir modal del Influencer obteniendo o generando su código real en el Backend
+  const handleOpenInfluencerAppModal = async (app: AppItem) => {
+    setPageError(null);
+    const existing = campaigns.find((c) => c.app_id === app.id);
+    if (existing) {
+      setSelectedAppForModal(app);
+      return;
+    }
 
-    const cleanPrefix = (profile?.full_name || "CARLOS")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 6);
-    const cleanApp = app.name
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 4);
-
-    const newCamp: InfluencerCampaign = {
-      id: `camp_${Date.now()}`,
-      influencer_id: profile?.id || "inf_demo_01",
-      app_id: app.id,
-      referral_code: `${cleanPrefix}_${cleanApp}7X`,
-      pending_referrals_count: 0,
-      verified_referrals_count: 0,
-      total_earned: 0,
-      is_active: true,
-      apps: {
-        name: app.name,
-        store_url: app.store_url,
-        status: app.status,
-      },
-    };
-    setCampaigns((prev) => [newCamp, ...prev]);
-    return newCamp;
+    setJoiningAppId(app.id);
+    try {
+      const res = await inadsApi.joinAppCampaign(app.id);
+      if (res.campaign) {
+        setCampaigns((prev) => [res.campaign, ...prev.filter((c) => c.app_id !== app.id)]);
+      }
+      setSelectedAppForModal(app);
+    } catch (err: any) {
+      setPageError(err?.message || "No se pudo generar tu código para esta aplicación.");
+    } finally {
+      setJoiningAppId(null);
+    }
   };
 
-  const handleOpenInfluencerAppModal = (app: AppItem) => {
-    getOrCreateCampaignForApp(app);
-    setSelectedAppForModal(app);
-  };
-
-  // Crear nueva App como Desarrollador
-  const handleCreateDeveloperApp = (e: React.FormEvent) => {
+  // Crear nueva App como Desarrollador en el Backend
+  const handleCreateDeveloperApp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAppName.trim() || !newAppStoreUrl.trim() || !newAppPitch.trim()) return;
 
-    const randomHex = Math.random().toString(16).substring(2, 10) +
-      Math.random().toString(16).substring(2, 10);
-    const rawKey = `inads_live_${randomHex}`;
+    setIsCreatingApp(true);
+    setPageError(null);
+    try {
+      const res = await inadsApi.createApp({
+        name: newAppName.trim(),
+        description: newAppDescription.trim(),
+        category: newAppCategory,
+        store_url: newAppStoreUrl.trim(),
+        pitch_guidelines: newAppPitch.trim(),
+        min_sessions_required: BUSINESS_RULES.DEFAULT_MIN_SESSIONS,
+      });
 
-    const createdApp: AppItem = {
-      id: `app_${Date.now()}`,
-      developer_id: profile?.id || "dev_demo_01",
-      name: newAppName.trim(),
-      description: newAppDescription.trim() || "Nuevo producto conectado a InAds.",
-      category: newAppCategory,
-      store_url: newAppStoreUrl.trim(),
-      pitch_guidelines: newAppPitch.trim(),
-      campaign_balance: 30.0, // Saldo inicial de demostración
-      total_deposited: 30.0,
-      cost_per_user: 0.15,
-      influencer_reward: 0.1,
-      api_key_prefix: `inads_live_${randomHex.slice(0, 8)}...`,
-      status: "active",
-      min_sessions_required: 3,
-      total_claims: 0,
-      total_verified: 0,
-      created_at: new Date().toISOString(),
-    };
-
-    setAppsList((prev) => [createdApp, ...prev]);
-    setNewlyGeneratedApiKey(rawKey);
-    setNewAppName("");
-    setNewAppStoreUrl("");
-    setNewAppDescription("");
-    setNewAppPitch("");
+      if (res.app) {
+        setAppsList((prev) => [res.app, ...prev]);
+      }
+      setNewlyGeneratedApiKey(res.api_key);
+      setNewAppName("");
+      setNewAppStoreUrl("");
+      setNewAppDescription("");
+      setNewAppPitch("");
+    } catch (err: any) {
+      setPageError(err?.message || "Error al registrar la aplicación.");
+    } finally {
+      setIsCreatingApp(false);
+    }
   };
 
-  const handleToggleDevAppStatus = (appId: string) => {
-    setAppsList((prev) =>
-      prev.map((a) => {
-        if (a.id !== appId) return a;
-        if (a.campaign_balance < 0.15) return a;
-        return {
-          ...a,
-          status: a.status === "active" ? "paused" : "active",
-        };
-      })
-    );
+  const handleToggleDevAppStatus = async (app: AppItem) => {
+    const nextStatus = app.status === "active" ? "paused" : "active";
+    setTogglingStatusAppId(app.id);
+    setPageError(null);
+    try {
+      const res = await inadsApi.toggleAppStatus(app.id, nextStatus);
+      if (res.app) {
+        setAppsList((prev) => prev.map((a) => (a.id === app.id ? res.app : a)));
+      }
+    } catch (err: any) {
+      setPageError(err?.message || "No se pudo actualizar el estado de la aplicación.");
+    } finally {
+      setTogglingStatusAppId(null);
+    }
+  };
+
+  const handleRegenerateApiKey = async (appId: string) => {
+    setRegeneratingKeyAppId(appId);
+    setPageError(null);
+    try {
+      const res = await inadsApi.regenerateApiKey(appId);
+      setAppsList((prev) =>
+        prev.map((a) =>
+          a.id === appId ? { ...a, api_key_prefix: res.api_key_prefix } : a
+        )
+      );
+      setNewlyGeneratedApiKey(res.api_key);
+      setIsCreateModalOpen(true);
+    } catch (err: any) {
+      setPageError(err?.message || "No se pudo regenerar la API Key.");
+    } finally {
+      setRegeneratingKeyAppId(null);
+    }
   };
 
   const activeModalCampaign = selectedAppForModal
@@ -203,13 +235,19 @@ export default function AppsMarketplacePage() {
                 setIsCreateModalOpen(true);
               }}
             >
-              + Agregar Producto
+              + Publicar Nueva App
             </Button>
           </div>
         ) : undefined
       }
     >
       <div className="space-y-6">
+        {pageError && (
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs sm:text-sm font-bold text-red-700">
+            {pageError}
+          </div>
+        )}
+
         {/* Barra de Búsqueda y Filtros por Categoría */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface-pure border border-surface-border rounded-2xl p-4 shadow-card">
           <div className="w-full md:w-80">
@@ -244,127 +282,195 @@ export default function AppsMarketplacePage() {
         </div>
 
         {/* Grid de Tarjetas de Apps */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredApps.map((app) => {
-            const existingCamp = campaigns.find((c) => c.app_id === app.id);
+        {isLoadingApps ? (
+          <div className="p-16 bg-surface-pure border border-surface-border rounded-2xl flex items-center justify-center gap-2 text-xs font-bold text-ink-secondary">
+            <Loader2 className="w-5 h-5 animate-spin text-brand-600" />
+            <span>Cargando catálogo de aplicaciones...</span>
+          </div>
+        ) : filteredApps.length === 0 ? (
+          <div className="p-12 bg-surface-pure border border-surface-border rounded-2xl text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mx-auto">
+              <Gamepad2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-extrabold text-ink-primary">
+              {role === "developer"
+                ? "Aún no tienes aplicaciones registradas"
+                : "No hay aplicaciones activas en esta categoría"}
+            </h3>
+            <p className="text-xs text-ink-secondary max-w-md mx-auto">
+              {role === "developer"
+                ? "Publica tu primer juego o aplicación para obtener tu API Key y recibir jugadores referidos por micro-influencers."
+                : "Cuando los desarrolladores activen campañas con presupuesto disponible, aparecerán aquí listas para promocionar."}
+            </p>
+            {role === "developer" && (
+              <div className="pt-2">
+                <Button
+                  onClick={() => {
+                    setNewlyGeneratedApiKey(null);
+                    setIsCreateModalOpen(true);
+                  }}
+                  leftIcon={<Plus className="w-4 h-4" />}
+                >
+                  + Publicar Nueva App
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredApps.map((app) => {
+              const existingCamp = campaigns.find((c) => c.app_id === app.id);
 
-            return (
-              <Card
-                key={app.id}
-                interactive
-                className="flex flex-col justify-between h-full"
-              >
-                <div>
-                  {/* Cabecera de la Tarjeta */}
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center shrink-0">
-                        <Gamepad2 className="w-6 h-6" />
+              return (
+                <Card
+                  key={app.id}
+                  interactive
+                  className="flex flex-col justify-between h-full"
+                >
+                  <div>
+                    {/* Cabecera de la Tarjeta */}
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center shrink-0">
+                          <Gamepad2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">
+                            {app.category}
+                          </span>
+                          <h3 className="text-base font-extrabold text-ink-primary leading-snug">
+                            {app.name}
+                          </h3>
+                        </div>
+                      </div>
+                      <Badge status={app.status} />
+                    </div>
+
+                    {/* Descripción */}
+                    <p className="text-xs text-ink-secondary leading-relaxed mb-4">
+                      {app.description}
+                    </p>
+
+                    {/* Métricas de la Tarjeta */}
+                    <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-surface-subtle border border-surface-border mb-5">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase text-ink-secondary block">
+                          {role === "developer"
+                            ? "Costo por Jugador"
+                            : "Tu Pago por Usuario"}
+                        </span>
+                        <span className="text-base font-black text-brand-600">
+                          {role === "developer"
+                            ? formatUSD(app.cost_per_user || 0.15)
+                            : formatUSD(app.influencer_reward)}
+                        </span>
                       </div>
                       <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">
-                          {app.category}
+                        <span className="text-[10px] font-bold uppercase text-ink-secondary block">
+                          Presupuesto Activo
                         </span>
-                        <h3 className="text-base font-extrabold text-ink-primary leading-snug">
-                          {app.name}
-                        </h3>
-                      </div>
-                    </div>
-                    <Badge status={app.status} />
-                  </div>
-
-                  {/* Descripción */}
-                  <p className="text-xs text-ink-secondary leading-relaxed mb-4">
-                    {app.description}
-                  </p>
-
-                  {/* Métricas de la Tarjeta */}
-                  <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-surface-subtle border border-surface-border mb-5">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase text-ink-secondary block">
-                        {role === "developer" ? "Costo por Jugador" : "Tu Pago por Usuario"}
-                      </span>
-                      <span className="text-base font-black text-brand-600">
-                        {role === "developer"
-                          ? formatUSD(app.cost_per_user || 0.15)
-                          : formatUSD(app.influencer_reward)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold uppercase text-ink-secondary block">
-                        Presupuesto Activo
-                      </span>
-                      <span className="text-sm font-extrabold text-ink-primary">
-                        {formatUSD(app.campaign_balance)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pie de Tarjeta según Rol */}
-                {role === "developer" ? (
-                  <div className="space-y-3 pt-3 border-t border-surface-border">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-mono text-ink-secondary">
-                        {app.api_key_prefix}
-                      </span>
-                      <span className="font-bold text-ink-primary">
-                        {formatNumber(app.total_verified)} verificados
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleDevAppStatus(app.id)}
-                        disabled={app.campaign_balance < 0.15}
-                        leftIcon={
-                          app.status === "active" ? (
-                            <Pause className="w-3.5 h-3.5" />
-                          ) : (
-                            <Play className="w-3.5 h-3.5" />
-                          )
-                        }
-                      >
-                        {app.status === "active" ? "Pausar" : "Activar"}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<Code2 className="w-3.5 h-3.5" />}
-                        onClick={() => setIsDocsModalOpen(true)}
-                      >
-                        Conectar API
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="pt-3 border-t border-surface-border space-y-2.5">
-                    {existingCamp && (
-                      <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-200 text-xs">
-                        <span className="font-semibold text-brand-700">Tu código:</span>
-                        <span className="font-mono font-black text-brand-600">
-                          {existingCamp.referral_code}
+                        <span className="text-sm font-extrabold text-ink-primary">
+                          {formatUSD(app.campaign_balance)}
                         </span>
                       </div>
-                    )}
-                    <Button
-                      variant="primary"
-                      size="md"
-                      fullWidth
-                      leftIcon={<Sparkles className="w-4 h-4" />}
-                      onClick={() => handleOpenInfluencerAppModal(app)}
-                    >
-                      {existingCamp
-                        ? "Ver Código y Guion de Promoción"
-                        : "Trabajar con esta App (Obtener Código)"}
-                    </Button>
+                    </div>
                   </div>
-                )}
-              </Card>
-            );
-          })}
-        </div>
+
+                  {/* Pie de Tarjeta según Rol */}
+                  {role === "developer" ? (
+                    <div className="space-y-3 pt-3 border-t border-surface-border">
+                      <div className="flex items-center justify-between text-xs gap-2">
+                        <span className="font-mono text-ink-secondary truncate">
+                          {app.api_key_prefix}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerateApiKey(app.id)}
+                          disabled={regeneratingKeyAppId === app.id}
+                          className="text-[11px] font-bold text-brand-600 hover:underline inline-flex items-center gap-1 shrink-0"
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "w-3 h-3",
+                              regeneratingKeyAppId === app.id && "animate-spin"
+                            )}
+                          />
+                          Regenerar Key
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-ink-secondary">
+                        <span>
+                          Canjes:{" "}
+                          <strong className="text-ink-primary">
+                            {formatNumber(app.total_claims || 0)}
+                          </strong>
+                        </span>
+                        <span>
+                          Verificados:{" "}
+                          <strong className="text-ink-primary">
+                            {formatNumber(app.total_verified)}
+                          </strong>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleDevAppStatus(app)}
+                          isLoading={togglingStatusAppId === app.id}
+                          disabled={
+                            app.status !== "active" &&
+                            app.campaign_balance < BUSINESS_RULES.COST_PER_VERIFIED_USER
+                          }
+                          leftIcon={
+                            app.status === "active" ? (
+                              <Pause className="w-3.5 h-3.5" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5" />
+                            )
+                          }
+                        >
+                          {app.status === "active" ? "Pausar" : "Activar"}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<Code2 className="w-3.5 h-3.5" />}
+                          onClick={() => setIsDocsModalOpen(true)}
+                        >
+                          Conectar API
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pt-3 border-t border-surface-border space-y-2.5">
+                      {existingCamp && (
+                        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-200 text-xs">
+                          <span className="font-semibold text-brand-700">Tu código:</span>
+                          <span className="font-mono font-black text-brand-600">
+                            {existingCamp.referral_code}
+                          </span>
+                        </div>
+                      )}
+                      <Button
+                        variant="primary"
+                        size="md"
+                        fullWidth
+                        isLoading={joiningAppId === app.id}
+                        leftIcon={<Sparkles className="w-4 h-4" />}
+                        onClick={() => handleOpenInfluencerAppModal(app)}
+                      >
+                        {existingCamp
+                          ? "Ver Código y Guion de Promoción"
+                          : "Trabajar con esta App (Obtener Código)"}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* =====================================================================
@@ -394,9 +500,7 @@ export default function AppsMarketplacePage() {
                 </span>
                 <Button
                   size="sm"
-                  variant={
-                    isCopied("modal_code") ? "secondary" : "primary"
-                  }
+                  variant={isCopied("modal_code") ? "secondary" : "primary"}
                   leftIcon={
                     isCopied("modal_code") ? (
                       <Check className="w-4 h-4" />
@@ -472,25 +576,35 @@ export default function AppsMarketplacePage() {
       </Modal>
 
       {/* =====================================================================
-          MODAL 2 (DEVELOPER): + Agregar Producto y Generar API Key
+          MODAL 2 (DEVELOPER): + Publicar Nueva App / Mostrar API Key
          ===================================================================== */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="+ Agregar Producto al Catálogo"
-        subtitle="Registra tu juego o aplicación y obtén tu API Key para conectarla al sistema."
+        title={
+          newlyGeneratedApiKey
+            ? "Tu API Key de Desarrollador"
+            : "+ Publicar Nueva App en InAds"
+        }
+        subtitle={
+          newlyGeneratedApiKey
+            ? "Guarda esta llave en un lugar seguro. Solo se muestra una vez."
+            : "Registra tu juego o aplicación y obtén tu API Key para conectarla al sistema."
+        }
         maxWidthClass="max-w-xl"
       >
         {newlyGeneratedApiKey ? (
           <div className="space-y-5">
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
               <p className="text-sm font-extrabold text-emerald-900">
-                ¡Producto registrado exitosamente!
+                ¡API Key generada exitosamente!
               </p>
               <p className="text-xs text-emerald-800">
                 Copia y guarda tu <strong>API Key de Desarrollador</strong>. Por
-                seguridad solo almacenamos su hash criptográfico en la base de
-                datos.
+                seguridad solo almacenamos su hash criptográfico HMAC-SHA256 en la
+                base de datos. Recuerda recargar saldo en la pestaña{" "}
+                <strong>Billetera</strong> para que tu campaña se active en el
+                catálogo público.
               </p>
             </div>
 
@@ -585,7 +699,11 @@ export default function AppsMarketplacePage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" leftIcon={<KeyRound className="w-4 h-4" />}>
+              <Button
+                type="submit"
+                isLoading={isCreatingApp}
+                leftIcon={<KeyRound className="w-4 h-4" />}
+              >
                 Registrar y Generar API Key
               </Button>
             </div>
@@ -609,12 +727,12 @@ export default function AppsMarketplacePage() {
               1. Cuando el jugador pega el código dentro del juego:
             </span>
             <pre className="p-3 rounded-lg bg-ink-primary text-surface-pure font-mono overflow-x-auto leading-relaxed">
-{`POST /api/v1/referrals/claim
+{`POST https://inads-production.up.railway.app/api/v1/referrals/claim
 Authorization: Bearer inads_live_TU_API_KEY
 Content-Type: application/json
 
 {
-  "referral_code": "CARLOS_NEON9A",
+  "referral_code": "CODIGO_DEL_CREADOR",
   "player_id": "jugador_unico_123",
   "device_hash": "id_unico_dispositivo"
 }`}
@@ -626,7 +744,7 @@ Content-Type: application/json
               2. Cuando el jugador cumple actividad/retención (libera los $0.10 al influencer):
             </span>
             <pre className="p-3 rounded-lg bg-ink-primary text-surface-pure font-mono overflow-x-auto leading-relaxed">
-{`POST /api/v1/referrals/verify
+{`POST https://inads-production.up.railway.app/api/v1/referrals/verify
 Authorization: Bearer inads_live_TU_API_KEY
 Content-Type: application/json
 
@@ -641,4 +759,3 @@ Content-Type: application/json
     </AppShell>
   );
 }
-

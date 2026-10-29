@@ -5,8 +5,20 @@
 import { getAccessToken } from "@/lib/supabase";
 import { PayoutDetails, PayoutMethodType, SocialLinks, UserRole } from "@/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const PRODUCTION_FALLBACK_API_URL = "https://inads-production.up.railway.app/api/v1";
+
+function resolveApiBaseUrl(): string {
+  const envUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (!isLocalhost && (!envUrl || envUrl.includes("localhost"))) {
+      return PRODUCTION_FALLBACK_API_URL;
+    }
+  }
+  return envUrl || "http://localhost:8080/api/v1";
+}
 
 interface RequestOptions extends RequestInit {
   bodyData?: unknown;
@@ -24,7 +36,8 @@ async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Pr
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const baseUrl = resolveApiBaseUrl();
+  const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
     headers,
     body: options.bodyData !== undefined ? JSON.stringify(options.bodyData) : options.body,
@@ -141,6 +154,14 @@ export const inadsApi = {
       method: "POST",
       bodyData: {
         payment_reference: paymentReference,
+        admin_notes: adminNotes || "",
+      },
+    }),
+
+  adminRejectPayout: (payoutId: string, adminNotes?: string) =>
+    apiRequest<any>(`/admin/payouts/${payoutId}/reject`, {
+      method: "POST",
+      bodyData: {
         admin_notes: adminNotes || "",
       },
     }),

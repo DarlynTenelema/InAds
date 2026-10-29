@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   title: "InAds — Monetización para Micro-Influencers & Indie Devs",
   description:
     "Conecta micro-influencers de 1,000 a 10,000 seguidores con desarrolladores independientes. Gana $0.10 USD por cada jugador verificado con tu código.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
   verification: {
     google: "AoMIknCqhydQPOblzzCuuTZ554ND3ZeC0OrpciVNcv4",
   },

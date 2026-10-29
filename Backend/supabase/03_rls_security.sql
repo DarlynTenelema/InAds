@@ -174,10 +174,13 @@ REVOKE EXECUTE ON FUNCTION public.fn_claim_referral FROM PUBLIC, anon, authentic
 REVOKE EXECUTE ON FUNCTION public.fn_verify_referral FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_admin_approve_deposit FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_admin_complete_payout FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.fn_admin_reject_payout FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.fn_claim_referral TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_verify_referral TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_request_payout TO service_role, authenticated;
 GRANT EXECUTE ON FUNCTION public.fn_admin_approve_deposit TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_complete_payout TO service_role;
+GRANT EXECUTE ON FUNCTION public.fn_admin_reject_payout TO service_role;
+
 

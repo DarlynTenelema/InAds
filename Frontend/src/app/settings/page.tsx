@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -18,75 +18,72 @@ import { inadsApi } from "@/services/api";
 import { PayoutMethodType } from "@/types";
 
 export default function SettingsPage() {
-  const { profile, isDemoMode, updateProfileState } = useAuth();
+  const { profile, updateProfileState } = useAuth();
 
-  const [fullName, setFullName] = useState(
-    profile?.full_name || "Carlos Mendoza"
-  );
-  const [email] = useState(profile?.email || "carlos.creator@gmail.com");
-  const [tiktok, setTiktok] = useState(
-    profile?.social_links?.tiktok || "@carlosgaming_yt"
-  );
-  const [youtube, setYoutube] = useState(
-    profile?.social_links?.youtube || "youtube.com/@carlosgaming"
-  );
-  const [twitch, setTwitch] = useState(
-    profile?.social_links?.twitch || "twitch.tv/carlosm"
-  );
-  const [instagram, setInstagram] = useState(
-    profile?.social_links?.instagram || "@carlos.ig"
-  );
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [tiktok, setTiktok] = useState("");
+  const [youtube, setYoutube] = useState("");
+  const [twitch, setTwitch] = useState("");
+  const [instagram, setInstagram] = useState("");
 
-  const [payoutMethod, setPayoutMethod] = useState<PayoutMethodType>(
-    profile?.payout_method || "paypal"
-  );
-  const [paypalEmail, setPaypalEmail] = useState(
-    profile?.payout_details?.paypal_email || "carlos.pagos@gmail.com"
-  );
-  const [bankAccount, setBankAccount] = useState(
-    profile?.payout_details?.bank_clabe_or_iban || ""
-  );
-  const [usdtAddress, setUsdtAddress] = useState(
-    profile?.payout_details?.usdt_address || ""
-  );
-  const [emailNotifications, setEmailNotifications] = useState(
-    profile?.email_notifications ?? true
-  );
+  const [payoutMethod, setPayoutMethod] = useState<PayoutMethodType>("paypal");
+  const [paypalEmail, setPaypalEmail] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
+  const [usdtAddress, setUsdtAddress] = useState("");
+  const [emailNotifications, setEmailNotifications] = useState(true);
+
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    setFullName(profile.full_name || "");
+    setEmail(profile.email || "");
+    setTiktok(profile.social_links?.tiktok || "");
+    setYoutube(profile.social_links?.youtube || "");
+    setTwitch(profile.social_links?.twitch || "");
+    setInstagram(profile.social_links?.instagram || "");
+    setPayoutMethod(profile.payout_method || "paypal");
+    setPaypalEmail(profile.payout_details?.paypal_email || "");
+    setBankAccount(profile.payout_details?.bank_clabe_or_iban || "");
+    setUsdtAddress(profile.payout_details?.usdt_address || "");
+    setEmailNotifications(profile.email_notifications ?? true);
+  }, [profile]);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setSaveError(null);
+    setSavedSuccess(false);
 
     const payload = {
-      full_name: fullName,
+      full_name: fullName.trim(),
       payout_method: payoutMethod,
       payout_details: {
-        paypal_email: paypalEmail,
-        bank_clabe_or_iban: bankAccount,
-        usdt_address: usdtAddress,
+        paypal_email: paypalEmail.trim(),
+        bank_clabe_or_iban: bankAccount.trim(),
+        usdt_address: usdtAddress.trim(),
       },
       social_links: {
-        tiktok,
-        youtube,
-        twitch,
-        instagram,
+        tiktok: tiktok.trim(),
+        youtube: youtube.trim(),
+        twitch: twitch.trim(),
+        instagram: instagram.trim(),
       },
       email_notifications: emailNotifications,
     };
 
     try {
-      if (!isDemoMode) {
-        const res = await inadsApi.updateSettings(payload);
-        if (res.profile) {
-          updateProfileState(res.profile);
-        }
-      } else {
-        updateProfileState(payload);
+      const res = await inadsApi.updateSettings(payload);
+      if (res.profile) {
+        updateProfileState(res.profile);
       }
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2800);
+      setTimeout(() => setSavedSuccess(false), 3200);
+    } catch (err: any) {
+      setSaveError(err?.message || "No se pudieron guardar los cambios.");
     } finally {
       setIsSaving(false);
     }
@@ -98,6 +95,12 @@ export default function SettingsPage() {
       subtitle="Administra tus datos personales, redes sociales vinculadas y método predeterminado de pago."
     >
       <form onSubmit={handleSaveSettings} className="space-y-6 max-w-4xl">
+        {saveError && (
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs sm:text-sm font-bold text-red-700">
+            {saveError}
+          </div>
+        )}
+
         {savedSuccess && (
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-2.5 text-xs sm:text-sm font-bold text-emerald-900">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />

@@ -28,10 +28,14 @@ func main() {
 
 	// 1. Healthcheck (Railway readiness probe)
 	mux.HandleFunc("GET /api/v1/health", srv.HealthCheck)
+	mux.HandleFunc("GET /v1/health", srv.HealthCheck)
 
 	// 2. API de Integración para Juegos y Apps (Autenticadas con Developer API Key)
+	// Soportamos tanto /api/v1/referrals/... como /v1/referrals/... según documentación
 	mux.HandleFunc("POST /api/v1/referrals/claim", guard.RequireDeveloperAPIKey(srv.ClaimReferral))
 	mux.HandleFunc("POST /api/v1/referrals/verify", guard.RequireDeveloperAPIKey(srv.VerifyReferral))
+	mux.HandleFunc("POST /v1/referrals/claim", guard.RequireDeveloperAPIKey(srv.ClaimReferral))
+	mux.HandleFunc("POST /v1/referrals/verify", guard.RequireDeveloperAPIKey(srv.VerifyReferral))
 
 	// 3. Perfil, Selección de Rol y Configuración (Pantallas /auth y /settings)
 	mux.HandleFunc("GET /api/v1/me", guard.RequireAuth(srv.GetMyProfile))
@@ -58,6 +62,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/admin/deposits/{id}/approve", guard.RequireAdmin(srv.AdminApproveDeposit))
 	mux.HandleFunc("POST /api/v1/admin/deposits/{id}/reject", guard.RequireAdmin(srv.AdminRejectDeposit))
 	mux.HandleFunc("POST /api/v1/admin/payouts/{id}/complete", guard.RequireAdmin(srv.AdminCompletePayout))
+	mux.HandleFunc("POST /api/v1/admin/payouts/{id}/reject", guard.RequireAdmin(srv.AdminRejectPayout))
 	mux.HandleFunc("POST /api/v1/admin/fraud-alerts/{id}/resolve", guard.RequireAdmin(srv.AdminResolveFraudAlert))
 
 	httpServer := &http.Server{

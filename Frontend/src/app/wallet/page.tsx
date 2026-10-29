@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -9,8 +10,9 @@ import {
   Clock,
   Copy,
   DollarSign,
+  Gamepad2,
+  Loader2,
   Send,
-  Sparkles,
   Wallet,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -25,16 +27,11 @@ import {
   StatCard,
 } from "@/components/ui";
 import {
+  APP_ROUTES,
   BUSINESS_RULES,
   INADS_RECEIVING_ACCOUNTS,
   PAYOUT_METHOD_LABELS,
 } from "@/constants/config";
-import {
-  MOCK_APPS,
-  MOCK_LEDGER_ENTRIES,
-  MOCK_PAYOUT_REQUESTS,
-  MOCK_WALLET_DEPOSITS,
-} from "@/constants/mockData";
 import { useAuth } from "@/hooks/useAuth";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { inadsApi } from "@/services/api";
@@ -48,54 +45,75 @@ import {
 import { formatDate, formatUSD } from "@/utils/formatters";
 
 export default function WalletPage() {
-  const { profile, isDemoMode, updateProfileState, refreshProfile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const { copyText, isCopied } = useCopyToClipboard();
 
-  const [payouts, setPayouts] = useState<PayoutRequest[]>(MOCK_PAYOUT_REQUESTS);
-  const [deposits, setDeposits] = useState<WalletDeposit[]>(MOCK_WALLET_DEPOSITS);
-  const [ledger, setLedger] = useState<LedgerEntry[]>(MOCK_LEDGER_ENTRIES);
-  const [devApps, setDevApps] = useState<AppItem[]>(
-    MOCK_APPS.filter((a) => a.developer_id === "dev_demo_01")
-  );
+  const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
+  const [deposits, setDeposits] = useState<WalletDeposit[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [devApps, setDevApps] = useState<AppItem[]>([]);
+  const [isLoadingWallet, setIsLoadingWallet] = useState<boolean>(true);
+  const [walletError, setWalletError] = useState<string | null>(null);
+  const [walletSuccess, setWalletSuccess] = useState<string | null>(null);
+
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Formulario de solicitud de retiro ($100+ USD)
-  const [withdrawMethod, setWithdrawMethod] = useState<PayoutMethodType>(
-    profile?.payout_method || "paypal"
-  );
-  const [withdrawDestination, setWithdrawDestination] = useState(
-    profile?.payout_details?.paypal_email || "carlos.pagos@gmail.com"
-  );
+  const [withdrawMethod, setWithdrawMethod] = useState<PayoutMethodType>("paypal");
+  const [withdrawDestination, setWithdrawDestination] = useState("");
 
   // Formulario de reporte de recarga manual (Developer)
-  const [depositAppId, setDepositAppId] = useState("app_neon_01");
-  const [depositAmount, setDepositAmount] = useState("45");
+  const [depositAppId, setDepositAppId] = useState("");
+  const [depositAmount, setDepositAmount] = useState("30");
   const [depositMethod, setDepositMethod] = useState<PayoutMethodType>("paypal");
   const [depositReference, setDepositReference] = useState("");
 
+  // Sincronizar método y destino predeterminado del perfil del usuario
   useEffect(() => {
-    if (isDemoMode) return;
+    if (!profile) return;
+    const method = profile.payout_method || "paypal";
+    setWithdrawMethod(method);
+    const details = profile.payout_details || {};
+    if (method === "paypal") {
+      setWithdrawDestination(details.paypal_email || "");
+    } else if (method === "bank_transfer") {
+      setWithdrawDestination(details.bank_clabe_or_iban || "");
+    } else {
+      setWithdrawDestination(details.usdt_address || "");
+    }
+  }, [profile]);
 
-    inadsApi
-      .getWallet()
-      .then((res) => {
-        if (res.payouts) setPayouts(res.payouts);
-        if (res.deposits) setDeposits(res.deposits);
-        if (res.ledger) setLedger(res.ledger);
-        if (res.apps && res.apps.length > 0) {
-          setDevApps(res.apps);
-          setDepositAppId(res.apps[0].id);
+  const loadWallet = useCallback(async () => {
+    setIsLoadingWallet(true);
+    setWalletError(null);
+    try {
+      const res = await inadsApi.getWallet();
+      setPayouts(res.payouts || []);
+      setDeposits(res.deposits || []);
+      setLedger(res.ledger || []);
+      if (res.apps) {
+        setDevApps(res.apps);
+        if (res.apps.length > 0) {
+          setDepositAppId((prev) => prev || res.apps[0].id);
         }
-      })
-      .catch(() => {});
-  }, [isDemoMode]);
+      }
+    } catch (err: any) {
+      setWalletError(err?.message || "No se pudo cargar la información de tu billetera.");
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadWallet();
+  }, [loadWallet]);
 
   const role = profile?.role || "influencer";
-  const availableBalance = profile?.available_balance ?? 68.4;
-  const pendingBalance = profile?.pending_balance ?? 14.2;
-  const totalEarned = profile?.total_earned ?? 268.4;
+  const availableBalance = Number(profile?.available_balance ?? 0);
+  const pendingBalance = Number(profile?.pending_balance ?? 0);
+  const totalEarned = Number(profile?.total_earned ?? 0);
   const canWithdraw = availableBalance >= BUSINESS_RULES.MIN_PAYOUT_USD;
 
   // Enviar solicitud de retiro manual (Influencer)
@@ -104,6 +122,8 @@ export default function WalletPage() {
     if (!canWithdraw || !withdrawDestination.trim()) return;
 
     setIsSubmitting(true);
+    setWalletError(null);
+    setWalletSuccess(null);
     try {
       const payoutDetails =
         withdrawMethod === "paypal"
@@ -112,30 +132,19 @@ export default function WalletPage() {
           ? { bank_clabe_or_iban: withdrawDestination.trim() }
           : { usdt_address: withdrawDestination.trim() };
 
-      if (!isDemoMode) {
-        await inadsApi.updateSettings({
-          payout_method: withdrawMethod,
-          payout_details: payoutDetails,
-        });
-        await inadsApi.requestPayout(availableBalance);
-        const walletRes = await inadsApi.getWallet();
-        if (walletRes.payouts) setPayouts(walletRes.payouts);
-        if (walletRes.ledger) setLedger(walletRes.ledger);
-        await refreshProfile();
-      } else {
-        const newPayout: PayoutRequest = {
-          id: `pay_${Date.now()}`,
-          influencer_id: profile?.id || "inf_demo_01",
-          amount: availableBalance,
-          payout_method: withdrawMethod,
-          payout_destination: payoutDetails,
-          status: "pending",
-          created_at: new Date().toISOString(),
-        };
-        setPayouts((prev) => [newPayout, ...prev]);
-        updateProfileState({ available_balance: 0 });
-      }
+      await inadsApi.updateSettings({
+        payout_method: withdrawMethod,
+        payout_details: payoutDetails,
+      });
+      await inadsApi.requestPayout(availableBalance);
+      await loadWallet();
+      await refreshProfile();
       setIsWithdrawModalOpen(false);
+      setWalletSuccess(
+        "Solicitud de retiro registrada exitosamente. El administrador procesará tu transferencia."
+      );
+    } catch (err: any) {
+      setWalletError(err?.message || "Error al solicitar el retiro.");
     } finally {
       setIsSubmitting(false);
     }
@@ -145,39 +154,35 @@ export default function WalletPage() {
   const handleReportDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numericAmount = parseFloat(depositAmount);
-    if (Number.isNaN(numericAmount) || numericAmount < 15 || !depositReference.trim()) {
+    if (
+      !depositAppId ||
+      Number.isNaN(numericAmount) ||
+      numericAmount < BUSINESS_RULES.MIN_DEPOSIT_USD ||
+      !depositReference.trim()
+    ) {
       return;
     }
 
     setIsSubmitting(true);
+    setWalletError(null);
+    setWalletSuccess(null);
     try {
-      if (!isDemoMode) {
-        const res = await inadsApi.reportDeposit({
-          app_id: depositAppId,
-          amount: numericAmount,
-          payment_method: depositMethod,
-          reference_code: depositReference.trim(),
-        });
-        if (res.deposit) {
-          setDeposits((prev) => [res.deposit, ...prev]);
-        }
-      } else {
-        const targetApp = devApps.find((a) => a.id === depositAppId);
-        const createdDeposit: WalletDeposit = {
-          id: `dep_${Date.now()}`,
-          developer_id: profile?.id || "dev_demo_01",
-          app_id: depositAppId,
-          amount: numericAmount,
-          payment_method: depositMethod,
-          reference_code: depositReference.trim(),
-          status: "pending",
-          created_at: new Date().toISOString(),
-          apps: { name: targetApp?.name || "App Seleccionada" },
-        };
-        setDeposits((prev) => [createdDeposit, ...prev]);
+      const res = await inadsApi.reportDeposit({
+        app_id: depositAppId,
+        amount: numericAmount,
+        payment_method: depositMethod,
+        reference_code: depositReference.trim(),
+      });
+      if (res.deposit) {
+        await loadWallet();
       }
       setDepositReference("");
       setIsDepositModalOpen(false);
+      setWalletSuccess(
+        "Comprobante de recarga enviado. El administrador validará la referencia y acreditará el saldo en tu campaña."
+      );
+    } catch (err: any) {
+      setWalletError(err?.message || "No se pudo registrar el comprobante de recarga.");
     } finally {
       setIsSubmitting(false);
     }
@@ -195,6 +200,7 @@ export default function WalletPage() {
           <Button
             variant="primary"
             leftIcon={<Send className="w-4 h-4" />}
+            disabled={devApps.length === 0}
             onClick={() => setIsDepositModalOpen(true)}
           >
             Reportar Recarga Manual
@@ -202,6 +208,36 @@ export default function WalletPage() {
         }
       >
         <div className="space-y-6">
+          {walletError && (
+            <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs sm:text-sm font-bold text-red-700">
+              {walletError}
+            </div>
+          )}
+          {walletSuccess && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{walletSuccess}</span>
+            </div>
+          )}
+
+          {devApps.length === 0 && !isLoadingWallet && (
+            <div className="p-5 rounded-2xl bg-brand-50 border border-brand-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-extrabold text-brand-700">
+                  Primero publica tu Juego o Aplicación
+                </p>
+                <p className="text-xs text-ink-secondary mt-0.5">
+                  Para reportar una recarga de presupuesto, registra primero la aplicación a la que se asignarán los fondos.
+                </p>
+              </div>
+              <Link href={APP_ROUTES.APPS} className="shrink-0">
+                <Button size="sm" leftIcon={<Gamepad2 className="w-4 h-4" />}>
+                  + Publicar App
+                </Button>
+              </Link>
+            </div>
+          )}
+
           {/* Cuentas Oficiales de InAds para Transferir */}
           <Card
             title="1. Cuentas Oficiales de InAds para Fondear tu Campaña"
@@ -254,44 +290,60 @@ export default function WalletPage() {
             subtitle="El administrador verifica la referencia de pago y acredita el saldo en tu aplicación."
             noPadding
           >
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-[11px] font-bold uppercase tracking-wider text-ink-secondary">
-                    <th className="py-3.5 px-6">Aplicación Destino</th>
-                    <th className="py-3.5 px-4">Método</th>
-                    <th className="py-3.5 px-4">Referencia / Comprobante</th>
-                    <th className="py-3.5 px-4">Estado</th>
-                    <th className="py-3.5 px-4">Fecha</th>
-                    <th className="py-3.5 px-6 text-right">Monto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border text-sm">
-                  {deposits.map((dep) => (
-                    <tr key={dep.id} className="hover:bg-surface-subtle/60">
-                      <td className="py-4 px-6 font-bold text-ink-primary">
-                        {dep.apps?.name}
-                      </td>
-                      <td className="py-4 px-4 text-xs font-semibold text-ink-secondary">
-                        {PAYOUT_METHOD_LABELS[dep.payment_method]}
-                      </td>
-                      <td className="py-4 px-4 font-mono text-xs text-ink-primary">
-                        {dep.reference_code}
-                      </td>
-                      <td className="py-4 px-4">
-                        <Badge status={dep.status} />
-                      </td>
-                      <td className="py-4 px-4 text-xs text-ink-secondary">
-                        {formatDate(dep.created_at)}
-                      </td>
-                      <td className="py-4 px-6 text-right font-extrabold text-brand-600">
-                        +{formatUSD(dep.amount)}
-                      </td>
+            {isLoadingWallet ? (
+              <div className="p-10 flex items-center justify-center gap-2 text-xs font-bold text-ink-secondary">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
+                <span>Consultando historial de recargas...</span>
+              </div>
+            ) : deposits.length === 0 ? (
+              <div className="p-10 text-center space-y-2">
+                <p className="text-sm font-bold text-ink-primary">
+                  Aún no has reportado recargas de saldo
+                </p>
+                <p className="text-xs text-ink-secondary max-w-md mx-auto">
+                  Cuando realices una transferencia y reportes el comprobante aquí, verás el estado de validación de tus fondos.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-surface-border bg-surface-subtle text-[11px] font-bold uppercase tracking-wider text-ink-secondary">
+                      <th className="py-3.5 px-6">Aplicación Destino</th>
+                      <th className="py-3.5 px-4">Método</th>
+                      <th className="py-3.5 px-4">Referencia / Comprobante</th>
+                      <th className="py-3.5 px-4">Estado</th>
+                      <th className="py-3.5 px-4">Fecha</th>
+                      <th className="py-3.5 px-6 text-right">Monto</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-surface-border text-sm">
+                    {deposits.map((dep) => (
+                      <tr key={dep.id} className="hover:bg-surface-subtle/60">
+                        <td className="py-4 px-6 font-bold text-ink-primary">
+                          {dep.apps?.name || "Aplicación"}
+                        </td>
+                        <td className="py-4 px-4 text-xs font-semibold text-ink-secondary">
+                          {PAYOUT_METHOD_LABELS[dep.payment_method] || dep.payment_method}
+                        </td>
+                        <td className="py-4 px-4 font-mono text-xs text-ink-primary">
+                          {dep.reference_code}
+                        </td>
+                        <td className="py-4 px-4">
+                          <Badge status={dep.status} />
+                        </td>
+                        <td className="py-4 px-4 text-xs text-ink-secondary">
+                          {formatDate(dep.created_at)}
+                        </td>
+                        <td className="py-4 px-6 text-right font-extrabold text-brand-600">
+                          +{formatUSD(dep.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
 
@@ -368,26 +420,20 @@ export default function WalletPage() {
     <AppShell
       title="Billetera & Retiros ($100 USD)"
       subtitle="Tus ganancias verificadas y solicitudes de transferencia manual."
-      headerAction={
-        isDemoMode ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Sparkles className="w-4 h-4" />}
-            onClick={() =>
-              updateProfileState({
-                available_balance: availableBalance >= 100 ? 68.4 : 114.5,
-              })
-            }
-          >
-            {availableBalance >= 100
-              ? "Volver saldo a $68.40 (Demo)"
-              : "Simular Saldo en $114.50 (Probar Retiro)"}
-          </Button>
-        ) : undefined
-      }
     >
       <div className="space-y-6">
+        {walletError && (
+          <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs sm:text-sm font-bold text-red-700">
+            {walletError}
+          </div>
+        )}
+        {walletSuccess && (
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-900">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{walletSuccess}</span>
+          </div>
+        )}
+
         {/* 1. Tarjetas de Saldo */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
@@ -457,40 +503,56 @@ export default function WalletPage() {
             noPadding
             className="lg:col-span-7"
           >
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-surface-border bg-surface-subtle text-[11px] font-bold uppercase tracking-wider text-ink-secondary">
-                    <th className="py-3.5 px-6">Fecha</th>
-                    <th className="py-3.5 px-4">Método</th>
-                    <th className="py-3.5 px-4">Estado</th>
-                    <th className="py-3.5 px-4">Ref. Transferencia</th>
-                    <th className="py-3.5 px-6 text-right">Monto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-border text-sm">
-                  {payouts.map((p) => (
-                    <tr key={p.id} className="hover:bg-surface-subtle/60">
-                      <td className="py-3.5 px-6 text-xs text-ink-secondary">
-                        {formatDate(p.created_at)}
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-ink-primary text-xs">
-                        {PAYOUT_METHOD_LABELS[p.payout_method]}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <Badge status={p.status} />
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-xs text-ink-secondary">
-                        {p.payment_reference || "En revisión por Admin"}
-                      </td>
-                      <td className="py-3.5 px-6 text-right font-extrabold text-brand-600">
-                        {formatUSD(p.amount)}
-                      </td>
+            {isLoadingWallet ? (
+              <div className="p-10 flex items-center justify-center gap-2 text-xs font-bold text-ink-secondary">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
+                <span>Consultando retiros...</span>
+              </div>
+            ) : payouts.length === 0 ? (
+              <div className="p-10 text-center space-y-2">
+                <p className="text-sm font-bold text-ink-primary">
+                  Aún no tienes solicitudes de retiro
+                </p>
+                <p className="text-xs text-ink-secondary max-w-md mx-auto">
+                  Cuando acumules $100.00 USD en saldo disponible, podrás solicitar tu transferencia y seguir su estado aquí.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-surface-border bg-surface-subtle text-[11px] font-bold uppercase tracking-wider text-ink-secondary">
+                      <th className="py-3.5 px-6">Fecha</th>
+                      <th className="py-3.5 px-4">Método</th>
+                      <th className="py-3.5 px-4">Estado</th>
+                      <th className="py-3.5 px-4">Ref. Transferencia</th>
+                      <th className="py-3.5 px-6 text-right">Monto</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-surface-border text-sm">
+                    {payouts.map((p) => (
+                      <tr key={p.id} className="hover:bg-surface-subtle/60">
+                        <td className="py-3.5 px-6 text-xs text-ink-secondary">
+                          {formatDate(p.created_at)}
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-ink-primary text-xs">
+                          {PAYOUT_METHOD_LABELS[p.payout_method] || p.payout_method}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <Badge status={p.status} />
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-xs text-ink-secondary">
+                          {p.payment_reference || "En revisión por Admin"}
+                        </td>
+                        <td className="py-3.5 px-6 text-right font-extrabold text-brand-600">
+                          {formatUSD(p.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
 
           <Card
@@ -498,44 +560,62 @@ export default function WalletPage() {
             subtitle="Últimas acreditaciones verificadas en tu cuenta."
             className="lg:col-span-5"
           >
-            <div className="space-y-3">
-              {ledger.map((entry) => {
-                const isPositive = entry.amount >= 0;
-                return (
-                  <div
-                    key={entry.id}
-                    className="p-3.5 rounded-xl bg-surface-subtle border border-surface-border flex items-start justify-between gap-3"
-                  >
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-2 rounded-lg bg-surface-pure border border-surface-border text-brand-600 shrink-0 mt-0.5">
-                        {isPositive ? (
-                          <ArrowDownLeft className="w-4 h-4" />
-                        ) : (
-                          <ArrowUpRight className="w-4 h-4" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-ink-primary leading-snug">
-                          {entry.description}
-                        </p>
-                        <p className="text-[11px] text-ink-secondary mt-1">
-                          {formatDate(entry.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={
-                        isPositive
-                          ? "text-xs font-black text-brand-600 shrink-0"
-                          : "text-xs font-black text-ink-primary shrink-0"
-                      }
+            {isLoadingWallet ? (
+              <div className="py-10 flex items-center justify-center gap-2 text-xs font-bold text-ink-secondary">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
+                <span>Cargando movimientos...</span>
+              </div>
+            ) : ledger.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-surface-subtle border border-surface-border text-center">
+                <p className="text-xs font-bold text-ink-primary">
+                  Sin movimientos contables registrados
+                </p>
+                <p className="text-xs text-ink-secondary mt-1">
+                  Cada conversión verificada ($0.10 USD) quedará registrada de forma inmutable en tu libro contable.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {ledger.map((entry) => {
+                  const isPositive = entry.amount >= 0;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="p-3.5 rounded-xl bg-surface-subtle border border-surface-border flex items-start justify-between gap-3"
                     >
-                      {isPositive ? `+${formatUSD(entry.amount)}` : formatUSD(entry.amount)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-2 rounded-lg bg-surface-pure border border-surface-border text-brand-600 shrink-0 mt-0.5">
+                          {isPositive ? (
+                            <ArrowDownLeft className="w-4 h-4" />
+                          ) : (
+                            <ArrowUpRight className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-ink-primary leading-snug">
+                            {entry.description}
+                          </p>
+                          <p className="text-[11px] text-ink-secondary mt-1">
+                            {formatDate(entry.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={
+                          isPositive
+                            ? "text-xs font-black text-brand-600 shrink-0"
+                            : "text-xs font-black text-ink-primary shrink-0"
+                        }
+                      >
+                        {isPositive
+                          ? `+${formatUSD(entry.amount)}`
+                          : formatUSD(entry.amount)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         </div>
       </div>
@@ -560,9 +640,18 @@ export default function WalletPage() {
           <Select
             label="Método de Recepción"
             value={withdrawMethod}
-            onChange={(e) =>
-              setWithdrawMethod(e.target.value as PayoutMethodType)
-            }
+            onChange={(e) => {
+              const nextMethod = e.target.value as PayoutMethodType;
+              setWithdrawMethod(nextMethod);
+              const details = profile?.payout_details || {};
+              if (nextMethod === "paypal") {
+                setWithdrawDestination(details.paypal_email || "");
+              } else if (nextMethod === "bank_transfer") {
+                setWithdrawDestination(details.bank_clabe_or_iban || "");
+              } else {
+                setWithdrawDestination(details.usdt_address || "");
+              }
+            }}
             options={[
               { value: "paypal", label: "PayPal" },
               {

@@ -32,11 +32,11 @@ func (s *Server) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if role == "developer" {
-		var devApps []map[string]any
+		devApps := make([]map[string]any, 0)
 		_ = s.DB.Query(r.Context(), "apps?developer_id=eq."+url.QueryEscape(userID)+"&order=created_at.desc", &devApps)
 
-		var recentReferrals []map[string]any
-		_ = s.DB.Query(r.Context(), "referrals?select=id,player_id,status,sessions_count,claimed_at,verified_at,apps!inner(name,developer_id)&apps.developer_id=eq."+url.QueryEscape(userID)+"&order=claimed_at.desc&limit=20", &recentReferrals)
+		recentReferrals := make([]map[string]any, 0)
+		_ = s.DB.Query(r.Context(), "referrals?select=id,player_id,status,sessions_count,claimed_at,verified_at,apps!inner(name,developer_id)&apps.developer_id=eq."+url.QueryEscape(userID)+"&order=claimed_at.desc&limit=100", &recentReferrals)
 
 		middleware.WriteJSON(w, http.StatusOK, map[string]any{
 			"status":           "success",
@@ -48,11 +48,11 @@ func (s *Server) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Vista Influencer (por defecto)
-	var campaigns []map[string]any
+	campaigns := make([]map[string]any, 0)
 	_ = s.DB.Query(r.Context(), "influencer_campaigns?influencer_id=eq."+url.QueryEscape(userID)+"&select=*,apps(name,icon_url,store_url,status)&order=created_at.desc", &campaigns)
 
-	var recentReferrals []map[string]any
-	_ = s.DB.Query(r.Context(), "referrals?influencer_id=eq."+url.QueryEscape(userID)+"&select=id,player_id,status,sessions_count,reward_amount,claimed_at,verified_at,apps(name)&order=claimed_at.desc&limit=20", &recentReferrals)
+	recentReferrals := make([]map[string]any, 0)
+	_ = s.DB.Query(r.Context(), "referrals?influencer_id=eq."+url.QueryEscape(userID)+"&select=id,player_id,status,sessions_count,reward_amount,claimed_at,verified_at,apps(name)&order=claimed_at.desc&limit=200", &recentReferrals)
 
 	progressPct := math.Min(100.0, (user.AvailableBalance/s.Cfg.MinPayoutAmount)*100.0)
 
