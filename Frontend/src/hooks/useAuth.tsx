@@ -136,8 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshProfile]);
 
-  const loginWithGoogle = useCallback(async (_preferredRole: UserRole = "influencer") => {
-    await signInWithGoogleOAuth();
+  const loginWithGoogle = useCallback(async (preferredRole: UserRole = "influencer") => {
+    await signInWithGoogleOAuth(preferredRole);
   }, []);
 
   const selectRole = useCallback(async (role: UserRole) => {

@@ -71,7 +71,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadDashboard();
-  }, [loadDashboard]);
+  }, [loadDashboard, profile?.role]);
 
   const handleToggleDevAppStatus = async (app: AppItem) => {
     const nextStatus = app.status === "active" ? "paused" : "active";

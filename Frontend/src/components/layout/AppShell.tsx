@@ -35,7 +35,20 @@ export function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { profile, isLoading, logout } = useAuth();
+  const { profile, isLoading, selectRole, logout } = useAuth();
+  const [isSwitchingRole, setIsSwitchingRole] = React.useState(false);
+
+  const handleSwitchRole = async (targetRole: UserRole) => {
+    if (!profile || profile.role === targetRole || isSwitchingRole) return;
+    setIsSwitchingRole(true);
+    try {
+      await selectRole(targetRole);
+    } catch {
+      // Silenciar si falla temporalmente
+    } finally {
+      setIsSwitchingRole(false);
+    }
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -124,13 +137,34 @@ export function AppShell({
         </Link>
 
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-lg bg-brand-50 border border-brand-200 text-[10px] font-extrabold uppercase text-brand-700">
-            {currentRole === "developer"
-              ? "Desarrollador"
-              : currentRole === "admin"
-              ? "Admin"
-              : "Creador"}
-          </span>
+          <div className="inline-flex items-center rounded-lg bg-surface-subtle border border-surface-border p-0.5">
+            <button
+              type="button"
+              disabled={isSwitchingRole}
+              onClick={() => handleSwitchRole("influencer")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[10px] font-extrabold uppercase transition-colors",
+                currentRole !== "developer"
+                  ? "bg-brand-600 text-surface-pure"
+                  : "text-ink-secondary hover:text-ink-primary"
+              )}
+            >
+              Creador
+            </button>
+            <button
+              type="button"
+              disabled={isSwitchingRole}
+              onClick={() => handleSwitchRole("developer")}
+              className={cn(
+                "px-2 py-1 rounded-md text-[10px] font-extrabold uppercase transition-colors",
+                currentRole === "developer"
+                  ? "bg-brand-600 text-surface-pure"
+                  : "text-ink-secondary hover:text-ink-primary"
+              )}
+            >
+              Dev
+            </button>
+          </div>
           <button
             type="button"
             onClick={handleLogout}
@@ -147,7 +181,7 @@ export function AppShell({
         <div className="p-5">
           <Link
             href={APP_ROUTES.DASHBOARD}
-            className="flex items-center gap-2.5 mb-7"
+            className="flex items-center gap-2.5 mb-4"
           >
             <Image
               src="/logo.png"
@@ -170,6 +204,36 @@ export function AppShell({
               </span>
             </div>
           </Link>
+
+          {/* Selector Rápido de Modo: Creador (Influencer) vs Desarrollador (Indie Dev) */}
+          <div className="mb-5 p-1 rounded-xl bg-surface-subtle border border-surface-border grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              disabled={isSwitchingRole}
+              onClick={() => handleSwitchRole("influencer")}
+              className={cn(
+                "py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition-all text-center",
+                currentRole !== "developer"
+                  ? "bg-brand-600 text-surface-pure shadow-2xs"
+                  : "text-ink-secondary hover:text-ink-primary"
+              )}
+            >
+              Modo Creador
+            </button>
+            <button
+              type="button"
+              disabled={isSwitchingRole}
+              onClick={() => handleSwitchRole("developer")}
+              className={cn(
+                "py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition-all text-center",
+                currentRole === "developer"
+                  ? "bg-brand-600 text-surface-pure shadow-2xs"
+                  : "text-ink-secondary hover:text-ink-primary"
+              )}
+            >
+              Modo Desarrollador
+            </button>
+          </div>
 
           <nav className="space-y-1">
             {navItems.map((item) => {

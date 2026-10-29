@@ -49,11 +49,10 @@ BEGIN
                 RAISE EXCEPTION 'Operación denegada: Estado de moderación protegido.';
             END IF;
 
-            -- Permitir elegir rol ('influencer' o 'developer') SOLO una vez durante el onboarding (cuando OLD.role IS NULL),
-            -- y jamás permitir auto-asignarse 'admin'.
+            -- Permitir alternar entre 'influencer' y 'developer', pero jamás permitir auto-asignarse 'admin'.
             IF NEW.role IS DISTINCT FROM OLD.role THEN
-                IF OLD.role IS NOT NULL OR NEW.role = 'admin' THEN
-                    RAISE EXCEPTION 'Operación denegada: No puedes cambiar tu rol ni asignarte permisos de administrador.';
+                IF NEW.role = 'admin' AND OLD.role IS DISTINCT FROM 'admin' THEN
+                    RAISE EXCEPTION 'Operación denegada: No puedes asignarte permisos de administrador.';
                 END IF;
             END IF;
         END IF;

@@ -63,19 +63,6 @@ func (s *Server) SelectInitialRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verificar si ya tenía un rol asignado
-	var existing []struct {
-		Role *string `json:"role"`
-	}
-	if err := s.DB.Query(r.Context(), "profiles?id=eq."+url.QueryEscape(userID)+"&select=role", &existing); err != nil {
-		middleware.WriteError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
-		return
-	}
-	if len(existing) > 0 && existing[0].Role != nil && *existing[0].Role != "" {
-		middleware.WriteError(w, http.StatusConflict, "ROLE_ALREADY_SET", "Tu cuenta ya tiene un rol asignado")
-		return
-	}
-
 	var updated []map[string]any
 	if err := s.DB.Update(r.Context(), "profiles?id=eq."+url.QueryEscape(userID), map[string]any{"role": role}, &updated); err != nil || len(updated) == 0 {
 		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", "No se pudo actualizar el rol del perfil")

@@ -42,21 +42,31 @@ export default function AuthLoginPage() {
   }, []);
 
   // Cuando el usuario regresa del callback de Google OAuth con sesión activa en Supabase:
-  // Si aún no tiene rol en la base de datos, le asignamos el rol que eligió antes de ir a Google.
+  // Asignamos automáticamente el rol elegido (nuevo usuario o cambio explícito de rol en /auth).
   useEffect(() => {
     if (isLoading || !profile) return;
 
     const finalizeOAuthOnboarding = async () => {
       try {
-        if (!profile.role) {
-          const savedRole =
-            (typeof window !== "undefined"
-              ? (window.localStorage.getItem(PENDING_ROLE_STORAGE_KEY) as UserRole | null)
-              : null) || selectedRole;
-          await selectRole(savedRole);
+        let pendingRole: UserRole | null = null;
+        if (typeof window !== "undefined") {
+          const roleFromStorage = window.localStorage.getItem(PENDING_ROLE_STORAGE_KEY);
+          const cookieMatch = document.cookie.match(/(?:^|;\s*)inads_pending_role=(developer|influencer)/);
+          const roleFromCookie = cookieMatch ? cookieMatch[1] : null;
+          const candidate = roleFromStorage || roleFromCookie;
+          if (candidate === "developer" || candidate === "influencer") {
+            pendingRole = candidate;
+          }
         }
+
+        const targetRole = pendingRole || profile.role || selectedRole;
+        if (!profile.role || (pendingRole && profile.role !== pendingRole)) {
+          await selectRole(targetRole);
+        }
+
         if (typeof window !== "undefined") {
           window.localStorage.removeItem(PENDING_ROLE_STORAGE_KEY);
+          document.cookie = "inads_pending_role=; path=/; max-age=0; SameSite=Lax";
         }
         router.replace(APP_ROUTES.DASHBOARD);
       } catch (err: any) {
@@ -72,6 +82,7 @@ export default function AuthLoginPage() {
     try {
       if (typeof window !== "undefined") {
         window.localStorage.setItem(PENDING_ROLE_STORAGE_KEY, role);
+        document.cookie = `inads_pending_role=${role}; path=/; max-age=600; SameSite=Lax`;
       }
       await loginWithGoogle(role);
     } catch (err: any) {

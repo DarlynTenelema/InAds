@@ -30,7 +30,7 @@ export async function getAccessToken(): Promise<string | null> {
 /**
  * Inicia el flujo de Google OAuth redirigiendo de vuelta a /auth.
  */
-export async function signInWithGoogleOAuth() {
+export async function signInWithGoogleOAuth(_preferredRole?: string) {
   if (!supabase) {
     throw new Error(
       "Supabase aún no está configurado en Frontend/.env.local. Usa el modo interactivo de prueba o agrega tus llaves."

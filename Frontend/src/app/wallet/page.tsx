@@ -111,7 +111,7 @@ export default function WalletPage() {
 
   useEffect(() => {
     loadWallet();
-  }, [loadWallet]);
+  }, [loadWallet, profile?.role]);
 
   const role = profile?.role || "influencer";
   const availableBalance = Number(profile?.available_balance ?? 0);

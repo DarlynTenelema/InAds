@@ -93,7 +93,7 @@ export default function AppsMarketplacePage() {
 
   useEffect(() => {
     loadApps();
-  }, [loadApps]);
+  }, [loadApps, role]);
 
   const categories = ["all", "Juegos Indie", "RPG / Acción", "Estrategia", "Apps Utilidad"];
 
