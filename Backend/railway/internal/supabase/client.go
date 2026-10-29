@@ -104,6 +104,33 @@ func (c *Client) Update(ctx context.Context, queryPath string, payload any, out 
 	return c.doRequest(req, out)
 }
 
+// UploadStorageObject sube un archivo a Supabase Storage y retorna su URL pública accesible.
+func (c *Client) UploadStorageObject(ctx context.Context, bucket, objectPath, contentType string, data []byte) (string, error) {
+	url := fmt.Sprintf("%s/storage/v1/object/%s/%s", c.baseURL, bucket, objectPath)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+
+	c.setServiceHeaders(req)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("x-upsert", "true")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error de red subiendo a Supabase Storage: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("error Supabase Storage (%d): %s", resp.StatusCode, string(respBytes))
+	}
+
+	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", c.baseURL, bucket, objectPath)
+	return publicURL, nil
+}
+
 // VerifyTokenRemote verifica el access_token directamente contra Supabase Auth (/auth/v1/user)
 // como respaldo cuando SUPABASE_JWT_SECRET aún no ha sido configurado localmente.
 func (c *Client) VerifyTokenRemote(ctx context.Context, accessToken string) (userID string, email string, err error) {

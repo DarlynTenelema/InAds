@@ -48,6 +48,8 @@ func main() {
 	// 5. Catálogo de Apps y Gestión de Códigos (Pantalla /apps)
 	mux.HandleFunc("GET /api/v1/apps", guard.RequireAuth(srv.ListApps))
 	mux.HandleFunc("POST /api/v1/apps", guard.RequireAuth(srv.CreateApp))
+	mux.HandleFunc("PATCH /api/v1/apps/{id}", guard.RequireAuth(srv.UpdateApp))
+	mux.HandleFunc("POST /api/v1/apps/upload-icon", guard.RequireAuth(srv.UploadAppIcon))
 	mux.HandleFunc("PATCH /api/v1/apps/{id}/status", guard.RequireAuth(srv.ToggleAppStatus))
 	mux.HandleFunc("POST /api/v1/apps/{id}/regenerate-key", guard.RequireAuth(srv.RegenerateAPIKey))
 	mux.HandleFunc("POST /api/v1/apps/{id}/join", guard.RequireAuth(srv.JoinAppCampaign))

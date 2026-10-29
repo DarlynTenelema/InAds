@@ -81,6 +81,53 @@ export const inadsApi = {
   // 3. Catálogo de Apps y Códigos (/apps)
   listApps: () => apiRequest<any>("/apps"),
 
+  uploadAppIcon: async (file: File): Promise<{ status: string; icon_url: string }> => {
+    const token = await getAccessToken();
+    const formData = new FormData();
+    formData.append("icon", file);
+
+    const baseUrl = resolveApiBaseUrl();
+    try {
+      const res = await fetch(`${baseUrl}/apps/upload-icon`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.icon_url) return data;
+      }
+    } catch {
+      // Si falla o no está disponible el backend Go local, usar el endpoint interno de Next.js
+    }
+
+    const nextRes = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+    const nextData = await nextRes.json().catch(() => ({}));
+    if (!nextRes.ok || nextData?.status === "error") {
+      throw new Error(nextData?.message || "Error al subir imagen");
+    }
+    return nextData;
+  },
+
+  updateApp: (
+    appId: string,
+    payload: {
+      name?: string;
+      description?: string;
+      category?: string;
+      icon_url?: string;
+      store_url?: string;
+      pitch_guidelines?: string;
+    }
+  ) =>
+    apiRequest<{ status: string; app: any }>(`/apps/${appId}`, {
+      method: "PATCH",
+      bodyData: payload,
+    }),
+
   createApp: (payload: {
     name: string;
     description: string;

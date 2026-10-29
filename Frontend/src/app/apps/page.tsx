@@ -5,8 +5,10 @@ import {
   Check,
   Code2,
   Copy,
+  Edit3,
   ExternalLink,
   Gamepad2,
+  Image as ImageIcon,
   KeyRound,
   Loader2,
   Megaphone,
@@ -16,6 +18,8 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Upload,
+  X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -33,6 +37,36 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { inadsApi, resolveApiBaseUrl } from "@/services/api";
 import { AppItem, InfluencerCampaign } from "@/types";
 import { cn, formatNumber, formatUSD } from "@/utils/formatters";
+
+function getStoreBadgeInfo(url: string) {
+  const lower = (url || "").toLowerCase();
+  if (lower.includes("play.google.com")) {
+    return {
+      platform: "Google Play",
+      color: "text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100",
+      label: "Google Play Store",
+    };
+  }
+  if (lower.includes("apple.com") || lower.includes("apps.apple.com")) {
+    return {
+      platform: "App Store",
+      color: "text-sky-700 bg-sky-50 border-sky-200 hover:bg-sky-100",
+      label: "Apple App Store",
+    };
+  }
+  if (lower.includes("steampowered.com")) {
+    return {
+      platform: "Steam",
+      color: "text-slate-800 bg-slate-100 border-slate-300 hover:bg-slate-200",
+      label: "Steam",
+    };
+  }
+  return {
+    platform: "Web / Tienda",
+    color: "text-brand-700 bg-brand-50 border-brand-200 hover:bg-brand-100",
+    label: "Página de Descarga",
+  };
+}
 
 export default function AppsMarketplacePage() {
   const { profile } = useAuth();
@@ -52,7 +86,7 @@ export default function AppsMarketplacePage() {
   );
   const [joiningAppId, setJoiningAppId] = useState<string | null>(null);
 
-  // Modal de "+ Agregar Producto" para el Desarrollador
+  // Modal de "+ Publicar Nueva App" para el Desarrollador
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingApp, setIsCreatingApp] = useState(false);
   const [newlyGeneratedApiKey, setNewlyGeneratedApiKey] = useState<string | null>(
@@ -72,6 +106,19 @@ export default function AppsMarketplacePage() {
   const [newAppStoreUrl, setNewAppStoreUrl] = useState("");
   const [newAppDescription, setNewAppDescription] = useState("");
   const [newAppPitch, setNewAppPitch] = useState("");
+  const [newAppIconUrl, setNewAppIconUrl] = useState("");
+  const [isUploadingNewIcon, setIsUploadingNewIcon] = useState(false);
+
+  // Modal y estados para Editar App existente (Developer)
+  const [editingApp, setEditingApp] = useState<AppItem | null>(null);
+  const [isUpdatingApp, setIsUpdatingApp] = useState(false);
+  const [editAppName, setEditAppName] = useState("");
+  const [editAppCategory, setEditAppCategory] = useState("Juegos Indie");
+  const [editAppStoreUrl, setEditAppStoreUrl] = useState("");
+  const [editAppDescription, setEditAppDescription] = useState("");
+  const [editAppPitch, setEditAppPitch] = useState("");
+  const [editAppIconUrl, setEditAppIconUrl] = useState("");
+  const [isUploadingEditIcon, setIsUploadingEditIcon] = useState(false);
 
   const role = profile?.role || "influencer";
 
@@ -109,6 +156,35 @@ export default function AppsMarketplacePage() {
     return matchesSearch && matchesCat;
   });
 
+  // Subir imagen a Supabase Storage
+  const handleUploadIcon = async (file: File, isEdit: boolean = false) => {
+    if (!file) return;
+    if (isEdit) {
+      setIsUploadingEditIcon(true);
+    } else {
+      setIsUploadingNewIcon(true);
+    }
+    setPageError(null);
+    try {
+      const res = await inadsApi.uploadAppIcon(file);
+      if (res.icon_url) {
+        if (isEdit) {
+          setEditAppIconUrl(res.icon_url);
+        } else {
+          setNewAppIconUrl(res.icon_url);
+        }
+      }
+    } catch (err: any) {
+      setPageError(err?.message || "Error al subir la imagen");
+    } finally {
+      if (isEdit) {
+        setIsUploadingEditIcon(false);
+      } else {
+        setIsUploadingNewIcon(false);
+      }
+    }
+  };
+
   // Abrir modal del Influencer obteniendo o generando su código real en el Backend
   const handleOpenInfluencerAppModal = async (app: AppItem) => {
     setPageError(null);
@@ -144,6 +220,7 @@ export default function AppsMarketplacePage() {
         name: newAppName.trim(),
         description: newAppDescription.trim(),
         category: newAppCategory,
+        icon_url: newAppIconUrl.trim() || undefined,
         store_url: newAppStoreUrl.trim(),
         pitch_guidelines: newAppPitch.trim(),
         min_sessions_required: BUSINESS_RULES.DEFAULT_MIN_SESSIONS,
@@ -157,10 +234,53 @@ export default function AppsMarketplacePage() {
       setNewAppStoreUrl("");
       setNewAppDescription("");
       setNewAppPitch("");
+      setNewAppIconUrl("");
     } catch (err: any) {
       setPageError(err?.message || "Error al registrar la aplicación.");
     } finally {
       setIsCreatingApp(false);
+    }
+  };
+
+  // Abrir Modal de Edición de App (Developer)
+  const handleOpenEditModal = (app: AppItem) => {
+    setEditingApp(app);
+    setEditAppName(app.name);
+    setEditAppCategory(app.category || "Juegos Indie");
+    setEditAppStoreUrl(app.store_url || "");
+    setEditAppDescription(app.description || "");
+    setEditAppPitch(app.pitch_guidelines || "");
+    setEditAppIconUrl(app.icon_url || "");
+    setPageError(null);
+  };
+
+  // Guardar Edición de App (Developer)
+  const handleSaveAppEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingApp) return;
+
+    setIsUpdatingApp(true);
+    setPageError(null);
+    try {
+      const res = await inadsApi.updateApp(editingApp.id, {
+        name: editAppName.trim(),
+        category: editAppCategory,
+        store_url: editAppStoreUrl.trim(),
+        description: editAppDescription.trim(),
+        pitch_guidelines: editAppPitch.trim(),
+        icon_url: editAppIconUrl.trim(),
+      });
+
+      if (res.app) {
+        setAppsList((prev) =>
+          prev.map((a) => (a.id === editingApp.id ? { ...a, ...res.app } : a))
+        );
+      }
+      setEditingApp(null);
+    } catch (err: any) {
+      setPageError(err?.message || "No se pudo actualizar la aplicación.");
+    } finally {
+      setIsUpdatingApp(false);
     }
   };
 
@@ -212,7 +332,7 @@ export default function AppsMarketplacePage() {
       }
       subtitle={
         role === "developer"
-          ? "Agrega tu juego o app, configura el guion para los influencers y conecta nuestra API."
+          ? "Agrega tu juego o app, sube su imagen, configura el guion para los creadores y conecta nuestra API."
           : "Selecciona el juego o app con el que desees trabajar para desplegar tu código y guion promocional."
       }
       headerAction={
@@ -232,6 +352,7 @@ export default function AppsMarketplacePage() {
               leftIcon={<Plus className="w-4 h-4" />}
               onClick={() => {
                 setNewlyGeneratedApiKey(null);
+                setNewAppIconUrl("");
                 setIsCreateModalOpen(true);
               }}
             >
@@ -307,6 +428,7 @@ export default function AppsMarketplacePage() {
                 <Button
                   onClick={() => {
                     setNewlyGeneratedApiKey(null);
+                    setNewAppIconUrl("");
                     setIsCreateModalOpen(true);
                   }}
                   leftIcon={<Plus className="w-4 h-4" />}
@@ -320,6 +442,7 @@ export default function AppsMarketplacePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredApps.map((app) => {
               const existingCamp = campaigns.find((c) => c.app_id === app.id);
+              const storeBadge = getStoreBadgeInfo(app.store_url);
 
               return (
                 <Card
@@ -328,17 +451,27 @@ export default function AppsMarketplacePage() {
                   className="flex flex-col justify-between h-full"
                 >
                   <div>
-                    {/* Cabecera de la Tarjeta */}
-                    <div className="flex items-start justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center shrink-0">
-                          <Gamepad2 className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600">
+                    {/* Cabecera de la Tarjeta con Foto/Ícono */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {app.icon_url ? (
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-surface-border bg-surface-subtle shrink-0 shadow-sm">
+                            <img
+                              src={app.icon_url}
+                              alt={app.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center shrink-0 shadow-sm">
+                            <Gamepad2 className="w-7 h-7" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600 block truncate">
                             {app.category}
                           </span>
-                          <h3 className="text-base font-extrabold text-ink-primary leading-snug">
+                          <h3 className="text-base font-extrabold text-ink-primary leading-snug truncate">
                             {app.name}
                           </h3>
                         </div>
@@ -346,8 +479,29 @@ export default function AppsMarketplacePage() {
                       <Badge status={app.status} />
                     </div>
 
+                    {/* Botón / Enlace Directo a la Tienda (Play Store / App Store) */}
+                    {app.store_url && (
+                      <a
+                        href={app.store_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition-colors mb-3 group shadow-2xs",
+                          storeBadge.color
+                        )}
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{storeBadge.label}</span>
+                        </span>
+                        <span className="text-[10px] uppercase font-black tracking-wider opacity-80 group-hover:opacity-100 flex items-center gap-1">
+                          Ver Juego &rarr;
+                        </span>
+                      </a>
+                    )}
+
                     {/* Descripción */}
-                    <p className="text-xs text-ink-secondary leading-relaxed mb-4">
+                    <p className="text-xs text-ink-secondary leading-relaxed mb-4 line-clamp-3">
                       {app.description}
                     </p>
 
@@ -412,7 +566,7 @@ export default function AppsMarketplacePage() {
                           </strong>
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -435,10 +589,18 @@ export default function AppsMarketplacePage() {
                         <Button
                           variant="secondary"
                           size="sm"
+                          leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                          onClick={() => handleOpenEditModal(app)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           leftIcon={<Code2 className="w-3.5 h-3.5" />}
                           onClick={() => setIsDocsModalOpen(true)}
                         >
-                          Conectar API
+                          API
                         </Button>
                       </div>
                     </div>
@@ -485,6 +647,43 @@ export default function AppsMarketplacePage() {
       >
         {selectedAppForModal && activeModalCampaign && (
           <div className="space-y-5">
+            {/* Cabecera con Foto y Enlace a la Tienda */}
+            <div className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-surface-subtle border border-surface-border">
+              {selectedAppForModal.icon_url ? (
+                <img
+                  src={selectedAppForModal.icon_url}
+                  alt={selectedAppForModal.name}
+                  className="w-14 h-14 rounded-2xl object-cover border border-surface-border shadow-sm shrink-0"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center shrink-0">
+                  <Gamepad2 className="w-7 h-7" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-brand-600">
+                    {selectedAppForModal.category}
+                  </span>
+                  <Badge status={selectedAppForModal.status} />
+                </div>
+                <h3 className="text-base font-black text-ink-primary truncate">
+                  {selectedAppForModal.name}
+                </h3>
+                {selectedAppForModal.store_url && (
+                  <a
+                    href={selectedAppForModal.store_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-brand-600 hover:underline inline-flex items-center gap-1 mt-0.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Abrir página de descarga ({getStoreBadgeInfo(selectedAppForModal.store_url).label})
+                  </a>
+                )}
+              </div>
+            </div>
+
             {/* Paso 1: Código para Copiar */}
             <div className="p-4 rounded-2xl bg-brand-50/70 border border-brand-200 space-y-2">
               <div className="flex items-center justify-between">
@@ -547,7 +746,7 @@ export default function AppsMarketplacePage() {
                 </button>
               </div>
 
-              <p className="text-sm text-ink-primary bg-surface-pure p-3.5 rounded-xl border border-surface-border leading-relaxed">
+              <p className="text-sm text-ink-primary bg-surface-pure p-3.5 rounded-xl border border-surface-border leading-relaxed whitespace-pre-line">
                 {selectedAppForModal.pitch_guidelines}
               </p>
             </div>
@@ -555,15 +754,17 @@ export default function AppsMarketplacePage() {
             {/* Enlace de la tienda para colocar en la bio o comentario fijado */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
               <div className="space-y-1">
-                <a
-                  href={selectedAppForModal.store_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-bold text-brand-600 hover:underline inline-flex items-center gap-1.5"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Abrir página de descarga del juego
-                </a>
+                {selectedAppForModal.store_url && (
+                  <a
+                    href={selectedAppForModal.store_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-brand-600 hover:underline inline-flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Visitar tienda del juego
+                  </a>
+                )}
                 <p className="text-[11px] text-ink-secondary">
                   ¿Consultas con esta campaña? Escríbenos a{" "}
                   <a
@@ -600,7 +801,7 @@ export default function AppsMarketplacePage() {
         subtitle={
           newlyGeneratedApiKey
             ? "Guarda esta llave en un lugar seguro. Solo se muestra una vez."
-            : "Registra tu juego o aplicación y obtén tu API Key para conectarla al sistema."
+            : "Registra tu juego o aplicación, sube su foto y obtén tu API Key para conectarla."
         }
         maxWidthClass="max-w-xl"
       >
@@ -663,6 +864,87 @@ export default function AppsMarketplacePage() {
               onChange={(e) => setNewAppName(e.target.value)}
             />
 
+            {/* Selector de Foto / Ícono del Juego */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-ink-primary block">
+                Foto o Ícono del Juego (Recomendado)
+              </label>
+              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-surface-subtle border border-surface-border">
+                {newAppIconUrl ? (
+                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-surface-border shrink-0 shadow-sm bg-surface-pure">
+                    <img
+                      src={newAppIconUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewAppIconUrl("")}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 shadow-sm"
+                      title="Eliminar foto"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/50 flex flex-col items-center justify-center text-brand-600 shrink-0">
+                    {isUploadingNewIcon ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-6 h-6 opacity-70" />
+                    )}
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={isUploadingNewIcon}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadIcon(file, false);
+                        }}
+                      />
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors shadow-2xs">
+                        {isUploadingNewIcon ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" /> Subir Imagen
+                          </>
+                        )}
+                      </span>
+                    </label>
+                    {newAppIconUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setNewAppIconUrl("")}
+                        className="text-xs text-red-600 hover:underline font-bold"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    PNG, JPG o WEBP (máx. 5 MB).
+                  </p>
+                  {!newAppIconUrl && (
+                    <Input
+                      placeholder="O escribe una URL directa: https://..."
+                      value={newAppIconUrl}
+                      onChange={(e) => setNewAppIconUrl(e.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Categoría"
@@ -723,7 +1005,163 @@ export default function AppsMarketplacePage() {
       </Modal>
 
       {/* =====================================================================
-          MODAL 3 (DEVELOPER): Documentación Rápida de Conexión API
+          MODAL 3 (DEVELOPER): Editar App Existente (Foto, Guion, Tienda)
+         ===================================================================== */}
+      <Modal
+        isOpen={Boolean(editingApp)}
+        onClose={() => setEditingApp(null)}
+        title={`Editar: ${editingApp?.name || "Aplicación"}`}
+        subtitle="Actualiza la imagen, el guion para influencers o el enlace de la tienda."
+        maxWidthClass="max-w-xl"
+      >
+        {editingApp && (
+          <form onSubmit={handleSaveAppEdit} className="space-y-4">
+            <Input
+              label="Nombre del Juego o Aplicación"
+              required
+              value={editAppName}
+              onChange={(e) => setEditAppName(e.target.value)}
+            />
+
+            {/* Selector de Foto / Ícono al editar */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-ink-primary block">
+                Foto o Ícono del Juego
+              </label>
+              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-surface-subtle border border-surface-border">
+                {editAppIconUrl ? (
+                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden border border-surface-border shrink-0 shadow-sm bg-surface-pure">
+                    <img
+                      src={editAppIconUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditAppIconUrl("")}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center hover:bg-red-700 shadow-sm"
+                      title="Eliminar foto"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/50 flex flex-col items-center justify-center text-brand-600 shrink-0">
+                    {isUploadingEditIcon ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-6 h-6 opacity-70" />
+                    )}
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={isUploadingEditIcon}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadIcon(file, true);
+                        }}
+                      />
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 transition-colors shadow-2xs">
+                        {isUploadingEditIcon ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5" /> Cambiar Imagen
+                          </>
+                        )}
+                      </span>
+                    </label>
+                    {editAppIconUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setEditAppIconUrl("")}
+                        className="text-xs text-red-600 hover:underline font-bold"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-ink-secondary">
+                    PNG, JPG o WEBP (máx. 5 MB).
+                  </p>
+                  {!editAppIconUrl && (
+                    <Input
+                      placeholder="O escribe una URL directa: https://..."
+                      value={editAppIconUrl}
+                      onChange={(e) => setEditAppIconUrl(e.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                label="Categoría"
+                value={editAppCategory}
+                onChange={(e) => setEditAppCategory(e.target.value)}
+                options={[
+                  { value: "Juegos Indie", label: "Juegos Indie" },
+                  { value: "RPG / Acción", label: "RPG / Acción" },
+                  { value: "Estrategia", label: "Estrategia" },
+                  { value: "Apps Utilidad", label: "Apps Utilidad" },
+                ]}
+              />
+              <Input
+                label="Enlace de Descarga (PlayStore / Steam / Web)"
+                required
+                value={editAppStoreUrl}
+                onChange={(e) => setEditAppStoreUrl(e.target.value)}
+              />
+            </div>
+
+            <Textarea
+              label="Descripción Breve"
+              rows={2}
+              required
+              value={editAppDescription}
+              onChange={(e) => setEditAppDescription(e.target.value)}
+            />
+
+            <Textarea
+              label="Guion para el Influencer (¿Qué debe decir en su video?)"
+              rows={3}
+              required
+              value={editAppPitch}
+              onChange={(e) => setEditAppPitch(e.target.value)}
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-surface-border">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditingApp(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                isLoading={isUpdatingApp}
+                leftIcon={<Check className="w-4 h-4" />}
+              >
+                Guardar Cambios
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* =====================================================================
+          MODAL 4 (DEVELOPER): Documentación Rápida de Conexión API
          ===================================================================== */}
       <Modal
         isOpen={isDocsModalOpen}

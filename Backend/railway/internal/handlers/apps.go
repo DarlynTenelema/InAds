@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -191,6 +195,125 @@ func (s *Server) ToggleAppStatus(w http.ResponseWriter, r *http.Request) {
 	var updated []map[string]any
 	if err := s.DB.Update(r.Context(), "apps?id=eq."+url.QueryEscape(appID), map[string]any{"status": targetStatus}, &updated); err != nil || len(updated) == 0 {
 		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", "No se pudo actualizar el estado de la aplicación")
+		return
+	}
+
+	delete(updated[0], "api_key_hash")
+
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{
+		"status": "success",
+		"app":    updated[0],
+	})
+}
+
+// UploadAppIcon — POST /api/v1/apps/upload-icon
+// Permite a un desarrollador subir el ícono o imagen de su aplicación (PNG, JPG, WEBP, máx 5MB).
+func (s *Server) UploadAppIcon(w http.ResponseWriter, r *http.Request) {
+	_ = r.Context().Value(middleware.CtxUserIDKey).(string)
+
+	if err := r.ParseMultipartForm(5 << 20); err != nil {
+		middleware.WriteError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "El archivo no debe exceder 5 MB")
+		return
+	}
+
+	file, _, err := r.FormFile("icon")
+	if err != nil {
+		middleware.WriteError(w, http.StatusBadRequest, "MISSING_FILE", "Debes adjuntar un archivo en el campo 'icon'")
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		middleware.WriteError(w, http.StatusInternalServerError, "FILE_READ_ERROR", "Error leyendo el archivo")
+		return
+	}
+
+	contentType := http.DetectContentType(data)
+	ext := ".png"
+	switch contentType {
+	case "image/png":
+		ext = ".png"
+	case "image/jpeg":
+		ext = ".jpg"
+	case "image/webp":
+		ext = ".webp"
+	case "image/gif":
+		ext = ".gif"
+	default:
+		middleware.WriteError(w, http.StatusBadRequest, "INVALID_FORMAT", "Solo se permiten imágenes en formato PNG, JPG, WEBP o GIF")
+		return
+	}
+
+	randBytes := make([]byte, 16)
+	_, _ = rand.Read(randBytes)
+	fileName := fmt.Sprintf("icon_%s%s", hex.EncodeToString(randBytes), ext)
+
+	publicURL, err := s.DB.UploadStorageObject(r.Context(), "app-icons", fileName, contentType, data)
+	if err != nil {
+		middleware.WriteError(w, http.StatusInternalServerError, "UPLOAD_ERROR", err.Error())
+		return
+	}
+
+	middleware.WriteJSON(w, http.StatusOK, map[string]any{
+		"status":   "success",
+		"icon_url": publicURL,
+	})
+}
+
+// UpdateApp — PATCH /api/v1/apps/{id}
+// Permite al Desarrollador editar datos visuales y guion de su aplicación.
+func (s *Server) UpdateApp(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value(middleware.CtxUserIDKey).(string)
+	appID := r.PathValue("id")
+
+	var req struct {
+		Name            *string `json:"name"`
+		Description     *string `json:"description"`
+		Category        *string `json:"category"`
+		IconURL         *string `json:"icon_url"`
+		StoreURL        *string `json:"store_url"`
+		PitchGuidelines *string `json:"pitch_guidelines"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		middleware.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "JSON inválido")
+		return
+	}
+
+	updates := make(map[string]any)
+	if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
+		updates["name"] = strings.TrimSpace(*req.Name)
+	}
+	if req.Description != nil && strings.TrimSpace(*req.Description) != "" {
+		updates["description"] = strings.TrimSpace(*req.Description)
+	}
+	if req.Category != nil && strings.TrimSpace(*req.Category) != "" {
+		updates["category"] = strings.TrimSpace(*req.Category)
+	}
+	if req.IconURL != nil {
+		trimmedIcon := strings.TrimSpace(*req.IconURL)
+		if trimmedIcon == "" || isSafeHTTPURL(trimmedIcon) {
+			updates["icon_url"] = trimmedIcon
+		}
+	}
+	if req.StoreURL != nil && strings.TrimSpace(*req.StoreURL) != "" {
+		if isSafeHTTPURL(*req.StoreURL) {
+			updates["store_url"] = strings.TrimSpace(*req.StoreURL)
+		}
+	}
+	if req.PitchGuidelines != nil && strings.TrimSpace(*req.PitchGuidelines) != "" {
+		updates["pitch_guidelines"] = strings.TrimSpace(*req.PitchGuidelines)
+	}
+
+	if len(updates) == 0 {
+		middleware.WriteError(w, http.StatusBadRequest, "NO_UPDATES", "No se enviaron campos válidos para actualizar")
+		return
+	}
+
+	var updated []map[string]any
+	query := "apps?id=eq." + url.QueryEscape(appID) + "&developer_id=eq." + url.QueryEscape(userID)
+	if err := s.DB.Update(r.Context(), query, updates, &updated); err != nil || len(updated) == 0 {
+		middleware.WriteError(w, http.StatusNotFound, "APP_NOT_FOUND", "Aplicación no encontrada o no pertenece a tu cuenta")
 		return
 	}
 
