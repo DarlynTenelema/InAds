@@ -65,14 +65,30 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     IF current_setting('request.jwt.claim.role', true) = 'authenticated' THEN
-        IF NEW.campaign_balance IS DISTINCT FROM OLD.campaign_balance
-           OR NEW.total_deposited IS DISTINCT FROM OLD.total_deposited
-           OR NEW.total_claims IS DISTINCT FROM OLD.total_claims
-           OR NEW.total_verified IS DISTINCT FROM OLD.total_verified
-           OR NEW.cost_per_user IS DISTINCT FROM OLD.cost_per_user
-           OR NEW.influencer_reward IS DISTINCT FROM OLD.influencer_reward
-           OR NEW.platform_fee IS DISTINCT FROM OLD.platform_fee THEN
-            RAISE EXCEPTION 'Operación denegada: Las métricas y el saldo de campaña son administrados exclusivamente por el motor de InAds.';
+        IF TG_OP = 'INSERT' THEN
+            NEW.campaign_balance := 0.00;
+            NEW.total_deposited := 0.00;
+            NEW.total_claims := 0;
+            NEW.total_verified := 0;
+            NEW.cost_per_user := 0.15;
+            NEW.influencer_reward := 0.10;
+            NEW.platform_fee := 0.05;
+            NEW.status := 'out_of_funds';
+        ELSIF TG_OP = 'UPDATE' THEN
+            IF NEW.campaign_balance IS DISTINCT FROM OLD.campaign_balance
+               OR NEW.total_deposited IS DISTINCT FROM OLD.total_deposited
+               OR NEW.total_claims IS DISTINCT FROM OLD.total_claims
+               OR NEW.total_verified IS DISTINCT FROM OLD.total_verified
+               OR NEW.cost_per_user IS DISTINCT FROM OLD.cost_per_user
+               OR NEW.influencer_reward IS DISTINCT FROM OLD.influencer_reward
+               OR NEW.platform_fee IS DISTINCT FROM OLD.platform_fee
+               OR NEW.api_key_hash IS DISTINCT FROM OLD.api_key_hash THEN
+                RAISE EXCEPTION 'Operación denegada: Las métricas y el saldo de campaña son administrados exclusivamente por el motor de InAds.';
+            END IF;
+
+            IF NEW.status = 'active' AND OLD.campaign_balance < OLD.cost_per_user THEN
+                RAISE EXCEPTION 'Operación denegada: No puedes activar una campaña sin saldo disponible.';
+            END IF;
         END IF;
     END IF;
     RETURN NEW;
@@ -81,7 +97,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_protect_app_columns ON public.apps;
 CREATE TRIGGER trg_protect_app_columns
-    BEFORE UPDATE ON public.apps
+    BEFORE INSERT OR UPDATE ON public.apps
     FOR EACH ROW EXECUTE FUNCTION public.protect_sensitive_app_columns();
 
 -- =============================================================================
@@ -172,13 +188,14 @@ CREATE POLICY "Usuarios ven su propio historial contable"
 
 REVOKE EXECUTE ON FUNCTION public.fn_claim_referral FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_verify_referral FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.fn_request_payout FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_admin_approve_deposit FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_admin_complete_payout FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.fn_admin_reject_payout FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.fn_claim_referral TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_verify_referral TO service_role;
-GRANT EXECUTE ON FUNCTION public.fn_request_payout TO service_role, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_request_payout TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_approve_deposit TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_complete_payout TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_reject_payout TO service_role;

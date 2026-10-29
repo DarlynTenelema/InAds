@@ -24,6 +24,17 @@ func VerifySupabaseJWT(tokenString, jwtSecret string) (*JWTClaims, error) {
 		return nil, errors.New("formato de token JWT inválido")
 	}
 
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, errors.New("cabecera JWT mal codificada")
+	}
+	var header struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil || header.Alg != "HS256" {
+		return nil, errors.New("algoritmo de firma JWT no permitido (se requiere HS256)")
+	}
+
 	unsignedToken := parts[0] + "." + parts[1]
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
@@ -48,12 +59,16 @@ func VerifySupabaseJWT(tokenString, jwtSecret string) (*JWTClaims, error) {
 		return nil, errors.New("no se pudieron leer los claims del JWT")
 	}
 
-	if claims.Exp > 0 && time.Now().Unix() > claims.Exp {
-		return nil, errors.New("la sesión ha expirado")
+	if claims.Exp <= 0 || time.Now().Unix() > claims.Exp {
+		return nil, errors.New("la sesión ha expirado o el token carece de fecha de expiración")
 	}
 
 	if claims.Sub == "" {
 		return nil, errors.New("token sin identificador de usuario (sub)")
+	}
+
+	if claims.Role != "" && claims.Role != "authenticated" && claims.Role != "service_role" {
+		return nil, errors.New("rol de token JWT no autorizado")
 	}
 
 	return &claims, nil

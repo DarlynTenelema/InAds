@@ -91,10 +91,19 @@ func (s *Server) CreateApp(w http.ResponseWriter, r *http.Request) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = strings.TrimSpace(req.Description)
 	req.StoreURL = strings.TrimSpace(req.StoreURL)
+	req.IconURL = strings.TrimSpace(req.IconURL)
 	req.PitchGuidelines = strings.TrimSpace(req.PitchGuidelines)
 
 	if req.Name == "" || req.Description == "" || req.StoreURL == "" || req.PitchGuidelines == "" {
 		middleware.WriteError(w, http.StatusBadRequest, "MISSING_FIELDS", "Nombre, descripción, enlace de tienda y guion para el creador son obligatorios")
+		return
+	}
+	if !isSafeHTTPURL(req.StoreURL) {
+		middleware.WriteError(w, http.StatusBadRequest, "INVALID_STORE_URL", "El enlace de descarga debe ser una URL válida con http:// o https://")
+		return
+	}
+	if req.IconURL != "" && !isSafeHTTPURL(req.IconURL) {
+		middleware.WriteError(w, http.StatusBadRequest, "INVALID_ICON_URL", "El enlace del ícono debe ser una URL válida con http:// o https://")
 		return
 	}
 	if req.Category == "" {
@@ -180,15 +189,26 @@ func (s *Server) ToggleAppStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var updated []map[string]any
-	if err := s.DB.Update(r.Context(), "apps?id=eq."+url.QueryEscape(appID), map[string]any{"status": targetStatus}, &updated); err != nil {
-		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", err.Error())
+	if err := s.DB.Update(r.Context(), "apps?id=eq."+url.QueryEscape(appID), map[string]any{"status": targetStatus}, &updated); err != nil || len(updated) == 0 {
+		middleware.WriteError(w, http.StatusInternalServerError, "UPDATE_ERROR", "No se pudo actualizar el estado de la aplicación")
 		return
 	}
+
+	delete(updated[0], "api_key_hash")
 
 	middleware.WriteJSON(w, http.StatusOK, map[string]any{
 		"status": "success",
 		"app":    updated[0],
 	})
+}
+
+func isSafeHTTPURL(rawURL string) bool {
+	u, err := url.ParseRequestURI(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return scheme == "http" || scheme == "https"
 }
 
 // RegenerateAPIKey — POST /api/v1/apps/{id}/regenerate-key

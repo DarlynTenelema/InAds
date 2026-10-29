@@ -33,7 +33,7 @@ func (s *Server) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
 	if role == "developer" {
 		devApps := make([]map[string]any, 0)
-		_ = s.DB.Query(r.Context(), "apps?developer_id=eq."+url.QueryEscape(userID)+"&order=created_at.desc", &devApps)
+		_ = s.DB.Query(r.Context(), "apps?developer_id=eq."+url.QueryEscape(userID)+"&select=id,name,description,category,icon_url,store_url,pitch_guidelines,campaign_balance,total_deposited,cost_per_user,influencer_reward,api_key_prefix,status,min_sessions_required,total_claims,total_verified,created_at&order=created_at.desc", &devApps)
 
 		recentReferrals := make([]map[string]any, 0)
 		_ = s.DB.Query(r.Context(), "referrals?select=id,player_id,status,sessions_count,claimed_at,verified_at,apps!inner(name,developer_id)&apps.developer_id=eq."+url.QueryEscape(userID)+"&order=claimed_at.desc&limit=100", &recentReferrals)

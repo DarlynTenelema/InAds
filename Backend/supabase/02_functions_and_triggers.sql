@@ -345,6 +345,11 @@ DECLARE
     v_new_balance NUMERIC(12, 2);
     v_payout_id UUID;
 BEGIN
+    -- Defensa en profundidad: si se invoca con sesión de usuario, solo puede retirar de su propia cuenta
+    IF auth.uid() IS NOT NULL AND auth.uid() != p_influencer_id THEN
+        RETURN jsonb_build_object('status', 'error', 'code', 'FORBIDDEN', 'message', 'No puedes solicitar retiros en nombre de otro usuario');
+    END IF;
+
     IF p_amount < 100.00 THEN
         RETURN jsonb_build_object('status', 'error', 'code', 'BELOW_MIN_PAYOUT', 'message', 'El monto mínimo de retiro es de $100.00 USD');
     END IF;

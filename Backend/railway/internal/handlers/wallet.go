@@ -118,6 +118,10 @@ func (s *Server) ReportDeposit(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, http.StatusBadRequest, "MISSING_FIELDS", "Debes especificar la App, el método de pago y el código de comprobante/referencia")
 		return
 	}
+	if req.ReceiptURL != "" && !isSafeHTTPURL(req.ReceiptURL) {
+		middleware.WriteError(w, http.StatusBadRequest, "INVALID_RECEIPT_URL", "El enlace del comprobante debe ser una URL válida con http:// o https://")
+		return
+	}
 	if req.Amount < 15.00 {
 		middleware.WriteError(w, http.StatusUnprocessableEntity, "MIN_DEPOSIT_ERROR", "La recarga mínima de campaña es de $15.00 USD")
 		return

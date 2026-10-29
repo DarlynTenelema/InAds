@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +88,11 @@ func (g *Guard) SecurityAndCORS(next http.Handler) http.Handler {
 		if !g.allowRequest(clientIP) {
 			WriteError(w, http.StatusTooManyRequests, "RATE_LIMIT_EXCEEDED", "Demasiadas solicitudes. Por favor intenta de nuevo en un minuto.")
 			return
+		}
+
+		// Limitar tamaño máximo de cuerpo HTTP a 1 MB para prevenir ataques DoS de agotamiento de memoria
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		}
 
 		next.ServeHTTP(w, r)
@@ -179,7 +185,7 @@ func (g *Guard) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
 		var profiles []struct {
 			Role string `json:"role"`
 		}
-		err := g.db.Query(r.Context(), "profiles?id=eq."+userID+"&select=role", &profiles)
+		err := g.db.Query(r.Context(), "profiles?id=eq."+url.QueryEscape(userID)+"&select=role", &profiles)
 		if err == nil && len(profiles) > 0 && profiles[0].Role == "admin" {
 			next.ServeHTTP(w, r)
 			return
