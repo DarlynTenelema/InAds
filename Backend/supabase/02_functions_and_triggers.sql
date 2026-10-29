@@ -49,8 +49,11 @@ BEGIN
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', NEW.raw_user_meta_data->>'picture', NULL)
     )
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT DO NOTHING;
     RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN NEW;
 END;
 $$;
 
@@ -58,6 +61,17 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+-- Sincronizar automáticamente usuarios de auth.users que hayan iniciado sesión antes de crear el trigger
+INSERT INTO public.profiles (id, email, full_name, avatar_url)
+SELECT
+    u.id,
+    u.email,
+    COALESCE(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+    COALESCE(u.raw_user_meta_data->>'avatar_url', u.raw_user_meta_data->>'picture', NULL)
+FROM auth.users u
+WHERE u.email IS NOT NULL
+ON CONFLICT DO NOTHING;
 
 -- =============================================================================
 -- 3. FUNCIÓN: Canje de Código dentro del Juego (POST /api/v1/referrals/claim)
@@ -539,5 +553,3 @@ BEGIN
     RETURN jsonb_build_object('status', 'success', 'payout_id', p_payout_id, 'refunded_balance', v_new_balance);
 END;
 $$;
-
-

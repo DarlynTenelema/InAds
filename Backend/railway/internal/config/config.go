@@ -32,10 +32,11 @@ func Load() *Config {
 	loadDotEnv("../.env")
 	loadDotEnv(".env")
 
-	originsRaw := getEnv("ALLOWED_ORIGINS", "http://localhost:3000")
+	defaultOrigins := "http://localhost:3000,https://in-ads.vercel.app,https://quinindews.com,https://www.quinindews.com,https://inads.quinindews.com"
+	originsRaw := getEnv("ALLOWED_ORIGINS", defaultOrigins)
 	var origins []string
-	for _, o := range strings.Split(originsRaw, ",") {
-		trimmed := strings.TrimSpace(o)
+	for _, o := range strings.Split(originsRaw+","+defaultOrigins, ",") {
+		trimmed := strings.TrimRight(strings.TrimSpace(o), "/")
 		if trimmed != "" {
 			origins = append(origins, trimmed)
 		}

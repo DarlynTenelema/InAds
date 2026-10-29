@@ -28,23 +28,33 @@ AS $$
 BEGIN
     -- Si la consulta viene desde el cliente web (authenticated) y no del backend (service_role)
     IF current_setting('request.jwt.claim.role', true) = 'authenticated' THEN
-        -- Impedir alteración de saldos
-        IF NEW.available_balance IS DISTINCT FROM OLD.available_balance
-           OR NEW.pending_balance IS DISTINCT FROM OLD.pending_balance
-           OR NEW.total_earned IS DISTINCT FROM OLD.total_earned THEN
-            RAISE EXCEPTION 'Operación denegada: No tienes permiso para modificar saldos directamente.';
-        END IF;
+        IF TG_OP = 'INSERT' THEN
+            NEW.available_balance := 0.00;
+            NEW.pending_balance := 0.00;
+            NEW.total_earned := 0.00;
+            NEW.is_suspended := FALSE;
+            IF NEW.role = 'admin' THEN
+                RAISE EXCEPTION 'Operación denegada: No puedes asignarte permisos de administrador.';
+            END IF;
+        ELSIF TG_OP = 'UPDATE' THEN
+            -- Impedir alteración de saldos
+            IF NEW.available_balance IS DISTINCT FROM OLD.available_balance
+               OR NEW.pending_balance IS DISTINCT FROM OLD.pending_balance
+               OR NEW.total_earned IS DISTINCT FROM OLD.total_earned THEN
+                RAISE EXCEPTION 'Operación denegada: No tienes permiso para modificar saldos directamente.';
+            END IF;
 
-        -- Impedir desbloqueo de cuenta suspendida
-        IF NEW.is_suspended IS DISTINCT FROM OLD.is_suspended THEN
-            RAISE EXCEPTION 'Operación denegada: Estado de moderación protegido.';
-        END IF;
+            -- Impedir desbloqueo de cuenta suspendida
+            IF NEW.is_suspended IS DISTINCT FROM OLD.is_suspended THEN
+                RAISE EXCEPTION 'Operación denegada: Estado de moderación protegido.';
+            END IF;
 
-        -- Permitir elegir rol ('influencer' o 'developer') SOLO una vez durante el onboarding (cuando OLD.role IS NULL),
-        -- y jamás permitir auto-asignarse 'admin'.
-        IF NEW.role IS DISTINCT FROM OLD.role THEN
-            IF OLD.role IS NOT NULL OR NEW.role = 'admin' THEN
-                RAISE EXCEPTION 'Operación denegada: No puedes cambiar tu rol ni asignarte permisos de administrador.';
+            -- Permitir elegir rol ('influencer' o 'developer') SOLO una vez durante el onboarding (cuando OLD.role IS NULL),
+            -- y jamás permitir auto-asignarse 'admin'.
+            IF NEW.role IS DISTINCT FROM OLD.role THEN
+                IF OLD.role IS NOT NULL OR NEW.role = 'admin' THEN
+                    RAISE EXCEPTION 'Operación denegada: No puedes cambiar tu rol ni asignarte permisos de administrador.';
+                END IF;
             END IF;
         END IF;
     END IF;
@@ -55,7 +65,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_protect_profile_columns ON public.profiles;
 CREATE TRIGGER trg_protect_profile_columns
-    BEFORE UPDATE ON public.profiles
+    BEFORE INSERT OR UPDATE ON public.profiles
     FOR EACH ROW EXECUTE FUNCTION public.protect_sensitive_profile_columns();
 
 -- Trigger similar para evitar que un Developer edite su propio campaign_balance desde el frontend
@@ -109,6 +119,11 @@ DROP POLICY IF EXISTS "Usuarios ven su propio perfil" ON public.profiles;
 CREATE POLICY "Usuarios ven su propio perfil"
     ON public.profiles FOR SELECT
     USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Usuarios crean su propio perfil inicial" ON public.profiles;
+CREATE POLICY "Usuarios crean su propio perfil inicial"
+    ON public.profiles FOR INSERT
+    WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Usuarios actualizan su propio perfil" ON public.profiles;
 CREATE POLICY "Usuarios actualizan su propio perfil"
@@ -199,5 +214,3 @@ GRANT EXECUTE ON FUNCTION public.fn_request_payout TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_approve_deposit TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_complete_payout TO service_role;
 GRANT EXECUTE ON FUNCTION public.fn_admin_reject_payout TO service_role;
-
-

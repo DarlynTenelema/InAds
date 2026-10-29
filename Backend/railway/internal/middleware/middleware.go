@@ -100,10 +100,15 @@ func (g *Guard) SecurityAndCORS(next http.Handler) http.Handler {
 }
 
 func (g *Guard) isOriginAllowed(origin string) bool {
+	cleanOrigin := strings.TrimRight(strings.TrimSpace(origin), "/")
 	for _, allowed := range g.cfg.AllowedOrigins {
-		if allowed == "*" || strings.EqualFold(allowed, origin) {
+		if allowed == "*" || strings.EqualFold(allowed, cleanOrigin) {
 			return true
 		}
+	}
+	lower := strings.ToLower(cleanOrigin)
+	if strings.HasSuffix(lower, ".quinindews.com") || strings.HasSuffix(lower, ".vercel.app") {
+		return true
 	}
 	return false
 }
@@ -141,17 +146,20 @@ func (g *Guard) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 		var userID, email string
 
-		// 1. Verificar con SUPABASE_JWT_SECRET local si está configurado
+		// 1. Intentar verificar con SUPABASE_JWT_SECRET local si está configurado (HS256)
 		if g.cfg.SupabaseJWTSecret != "" && g.cfg.SupabaseJWTSecret != "reemplazar_con_supabase_jwt_secret" {
-			claims, err := security.VerifySupabaseJWT(token, g.cfg.SupabaseJWTSecret)
-			if err != nil {
-				WriteError(w, http.StatusUnauthorized, "INVALID_TOKEN", err.Error())
+			if claims, err := security.VerifySupabaseJWT(token, g.cfg.SupabaseJWTSecret); err == nil {
+				userID = claims.Sub
+				email = claims.Email
+			}
+		}
+
+		// 2. Fallback automático: Validar contra /auth/v1/user de Supabase (soporta ES256, RS256 y rotación de secretos)
+		if userID == "" {
+			if !g.db.IsConfigured() {
+				WriteError(w, http.StatusServiceUnavailable, "SUPABASE_NOT_CONFIGURED", "Configura las credenciales de Supabase en Backend/.env")
 				return
 			}
-			userID = claims.Sub
-			email = claims.Email
-		} else if g.db.IsConfigured() {
-			// 2. Fallback: Validar contra el endpoint /auth/v1/user de Supabase
 			uid, em, err := g.db.VerifyTokenRemote(r.Context(), token)
 			if err != nil {
 				WriteError(w, http.StatusUnauthorized, "INVALID_SESSION", "Sesión inválida o expirada")
@@ -159,9 +167,6 @@ func (g *Guard) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 			userID = uid
 			email = em
-		} else {
-			WriteError(w, http.StatusServiceUnavailable, "SUPABASE_NOT_CONFIGURED", "Configura las credenciales de Supabase en Backend/.env")
-			return
 		}
 
 		ctx := context.WithValue(r.Context(), CtxUserIDKey, userID)

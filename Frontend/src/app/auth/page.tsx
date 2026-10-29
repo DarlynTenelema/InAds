@@ -24,9 +24,22 @@ const PENDING_ROLE_STORAGE_KEY = "inads_pending_oauth_role";
 
 export default function AuthLoginPage() {
   const router = useRouter();
-  const { profile, isLoading, loginWithGoogle, selectRole } = useAuth();
+  const { profile, isLoading, authError: contextAuthError, loginWithGoogle, selectRole } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>("influencer");
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Detectar si Google / Supabase devolvió un error en el hash de la URL (#error_description=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash && hash.includes("error_description=")) {
+      const params = new URLSearchParams(hash.replace(/^#/, ""));
+      const desc = params.get("error_description");
+      if (desc) {
+        setAuthError(decodeURIComponent(desc.replace(/\+/g, " ")));
+      }
+    }
+  }, []);
 
   // Cuando el usuario regresa del callback de Google OAuth con sesión activa en Supabase:
   // Si aún no tiene rol en la base de datos, le asignamos el rol que eligió antes de ir a Google.
@@ -110,9 +123,9 @@ export default function AuthLoginPage() {
 
       {/* Contenido Principal Responsive (Mobile-First + Split Desktop) */}
       <main className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-10 lg:py-12">
-        {authError && (
+        {(authError || contextAuthError) && (
           <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-xs sm:text-sm font-bold text-red-700">
-            {authError}
+            {authError || contextAuthError}
           </div>
         )}
 

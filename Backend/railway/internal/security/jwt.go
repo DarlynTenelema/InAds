@@ -46,7 +46,16 @@ func VerifySupabaseJWT(tokenString, jwtSecret string) (*JWTClaims, error) {
 	expectedSig := mac.Sum(nil)
 
 	if !hmac.Equal(signature, expectedSig) {
-		return nil, errors.New("firma de token JWT inválida")
+		// Intentar también decodificando el secret en Base64 por si fue copiado en ese formato
+		if decodedSecret, decErr := base64.StdEncoding.DecodeString(jwtSecret); decErr == nil {
+			macB64 := hmac.New(sha256.New, decodedSecret)
+			macB64.Write([]byte(unsignedToken))
+			if !hmac.Equal(signature, macB64.Sum(nil)) {
+				return nil, errors.New("firma de token JWT inválida")
+			}
+		} else {
+			return nil, errors.New("firma de token JWT inválida")
+		}
 	}
 
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
